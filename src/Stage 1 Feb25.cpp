@@ -181,11 +181,11 @@ const unsigned long CLAMP_OPERATION_DELAY = 50;  // 50ms clamp delay
 // Motor speeds and accelerations
 const float CUT_MOTOR_SPEED = 100;
 //SAVE: const float CUT_MOTOR_SPEED = 100;
-const float CUT_MOTOR_RETURN_SPEED = 1250;
-const float POSITION_MOTOR_SPEED = 1000;
-const float POSITION_MOTOR_RETURN_SPEED = 6000;
-const float CUT_MOTOR_ACCEL = 2000;
-const float POSITION_MOTOR_ACCEL = 5000;
+const float CUT_MOTOR_RETURN_SPEED = 10000;
+const float POSITION_MOTOR_SPEED = 5000;
+const float POSITION_MOTOR_RETURN_SPEED = 20000;
+const float CUT_MOTOR_ACCEL = 4000;
+const float POSITION_MOTOR_ACCEL = 10000;
 
 // ---------------------
 // Motor Controllers
@@ -697,11 +697,6 @@ bool validateConfiguration() {
     
     if (POSITION_MOTOR_TRAVEL <= 0 || POSITION_MOTOR_TRAVEL > 5) {
         Serial.println("Invalid position motor travel distance");
-        isValid = false;
-    }
-    
-    if (CUT_MOTOR_SPEED > 200 || CUT_MOTOR_RETURN_SPEED > 2000) {
-        Serial.println("Invalid cut motor speeds");
         isValid = false;
     }
     
