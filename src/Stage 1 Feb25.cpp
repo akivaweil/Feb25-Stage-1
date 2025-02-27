@@ -236,7 +236,7 @@ const float POSITION_MOTOR_TRAVEL = 3.35;  // 3.35 inches position travel
 const unsigned long CLAMP_OPERATION_DELAY = 50;  // 50ms clamp delay
 
 // Motor speeds and accelerations
-const float CUT_MOTOR_SPEED = 120;
+const float CUT_MOTOR_SPEED = 150;
 //SAVE: const float CUT_MOTOR_SPEED = 100;
 const float CUT_MOTOR_RETURN_SPEED = 10000;
 const float POSITION_MOTOR_SPEED = 5000;
@@ -267,7 +267,6 @@ bool startupComplete = false;
 bool initialStateReported = false;
 bool inReloadMode = false;  // Track reload mode state
 bool noWoodMode = false;  // Track no-wood mode state
-bool previousStartCycleState = false;
 
 enum SystemState {
     STARTUP,
@@ -394,13 +393,17 @@ void loop() {
             // Always check the reload switch state
             handleReloadSwitch();
             
-            // Edge-detect the run cycle switch press
-            static bool previousStartCycleState = false;
-            bool currentStartCycleState = (startCycleSwitch.read() == HIGH);
-            if (currentStartCycleState && !previousStartCycleState) {
-                Serial.println("Start cycle switch pressed, initiating cycle sequence");
+            // Directly check if the start cycle switch is HIGH
+            if (startCycleSwitch.read() == HIGH) {
+                Serial.println("Start cycle switch active, initiating cycle sequence");
+                // Continue running cycles as long as the switch remains HIGH
                 while (startCycleSwitch.read() == HIGH) {
                     updateSwitches();
+                    // Extra check added here so a new cycle doesn't start if the switch is off
+                    if (startCycleSwitch.read() != HIGH) {
+                        Serial.println("Run cycle switch turned off. Aborting cycle initiation.");
+                        break;
+                    }
                     Serial.println("Starting cut cycle...");
                     performCutCycle();
                     updateSwitches();
@@ -409,7 +412,6 @@ void loop() {
                         break;
                 }
             }
-            previousStartCycleState = currentStartCycleState;
         }
     }
     
@@ -784,40 +786,52 @@ void performCutCycle() {
         sendSignalToStage2();
         unsigned long signalStartTime = millis();
         
-        // STEP 2: Retract secure wood clamp
-        digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_DISENGAGED);
-        
-        // STEP 3: Both motors begin returning home concurrently.
-        cutMotor.setMaxSpeed(CUT_MOTOR_RETURN_SPEED);
+        // --- NEW SEQUENCE START ---
+        // Instead of immediately retracting the secure wood clamp, allow the position motor to start dragging for 50ms.
+        // Command the position motor to return home (to drag the wood).
         positionMotor.setMaxSpeed(POSITION_MOTOR_RETURN_SPEED);
-        cutMotor.moveTo(0);           // Return cut motor to home
-        positionMotor.moveTo(0);        // Return position motor to home
-
-        // Keep the position clamp extended initially for the first 0.1 inch of travel
-        digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);  // Clamp remains extended
+        positionMotor.moveTo(0);  // Command position motor to return home
+        
+        // Ensure the position clamp remains engaged initially for proper wood drag.
+        digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
+        
+        // Set a 50ms delay target for when the secure wood clamp should retract.
+        unsigned long secureClampRetractionDelay = 100; // in milliseconds
+        unsigned long clampRetractionTime = millis() + secureClampRetractionDelay;
+        bool secureClampRetracted = false;
+        
         // Capture the starting position for the return sequence
         long returnStartPos = positionMotor.currentPosition();
-        bool clampRetracted = false;
-
-        // Continue returning both motors home
-        Serial.println("Returning both motors to home");
-        bool cutMotorDone = (cutMotor.distanceToGo() == 0);
-        bool positionMotorDone = (positionMotor.distanceToGo() == 0);
-        while (!cutMotorDone || !positionMotorDone) {
-            // If the position motor has moved 0.1 inch (in steps) from its start, retract the clamp
-            if (!clampRetracted && ((returnStartPos - positionMotor.currentPosition()) >= (0.1 * POSITION_STEPS_PER_INCH))) {
-                Serial.println("Position motor moved 0.1 inch; retracting clamp for remainder of home move");
-                digitalWrite(PIN_POSITION_CLAMP, CLAMP_DISENGAGED);  // Retract position clamp
-                clampRetracted = true;
+        
+        Serial.println("Waiting for position motor to drag wood back 0.1 inches and 50ms delay...");
+        // Wait until the position motor has moved 0.1 inch (in steps)
+        while ((returnStartPos - positionMotor.currentPosition()) < (0.1 * POSITION_STEPS_PER_INCH)) {
+            positionMotor.run();
+            // After 50ms has elapsed, retract secure wood clamp (if not already retracted)
+            if (!secureClampRetracted && (millis() >= clampRetractionTime)) {
+                Serial.println("50ms elapsed; retracting secure wood clamp.");
+                digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_DISENGAGED);
+                secureClampRetracted = true;
             }
-            
-            // Keep sending signal periodically
             if (millis() - signalStartTime >= 1000) {
                 sendSignalToStage2();
                 signalStartTime = millis();
             }
-            
-            // Run the motors independently until both reach home
+        }
+        // --- NEW SEQUENCE END ---
+        
+        // STEP 4: After dragging wood back 0.1 inches, retract the position clamp for the remaining move to home.
+        Serial.println("0.1 inch drag complete. Retracting position clamp for remaining home travel.");
+        digitalWrite(PIN_POSITION_CLAMP, CLAMP_DISENGAGED);
+        
+        // Now start the cut motor's return.
+        cutMotor.setMaxSpeed(CUT_MOTOR_RETURN_SPEED);
+        cutMotor.moveTo(0);
+        
+        Serial.println("Returning both motors to home");
+        bool positionMotorDone = false;
+        bool cutMotorDone = false;
+        while (!positionMotorDone || !cutMotorDone) {
             if (!positionMotorDone) {
                 positionMotor.run();
                 if (positionMotor.distanceToGo() == 0) {
@@ -832,16 +846,20 @@ void performCutCycle() {
                     Serial.println("Cut motor reached home");
                 }
             }
+            if (millis() - signalStartTime >= 1000) {
+                sendSignalToStage2();
+                signalStartTime = millis();
+            }
         }
         
-        // STEP 5: Both motors are home; extend (engage) the position clamp
+        // STEP 5: After both motors are home, re-engage the position clamp as part of final positioning.
         Serial.println("Both motors at home, engaging position clamp");
         digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
         
-        // STEP 6: Wait an additional 100ms before starting the final move
+        // STEP 6: Wait an additional 100ms before starting the final move.
         delay(100);
         
-        // STEP 7: Move position motor to final position (3.45 inches target)
+        // STEP 7: Move position motor to final position (3.45 inches target).
         Serial.println("Moving position motor to 3.45\"");
         positionMotor.setMaxSpeed(POSITION_MOTOR_SPEED);
         positionMotor.setAcceleration(POSITION_MOTOR_ACCEL);
@@ -1099,22 +1117,21 @@ void updateLEDs() {
     }
 }
 
-// Modify the sendSignalToStage2 function to use a non-blocking pulse instead of a blocking delay.
+// Modify the sendSignalToStage2 function to use a non-blocking pulse with a much longer duration
 void sendSignalToStage2() {
     // Send a non-blocking pulse to Stage 2 via GPIO
     static unsigned long signalStartTime = 0;
-    const unsigned long pulseDuration = 100;  // Pulse duration in milliseconds
-
-    // Optional: Uncomment the below line for debug output
-    // Serial.println("Sending signal to Stage 2 via GPIO");
-
+    const unsigned long pulseDuration = 2000;  // Increased to 2000ms (2 seconds)
+    
     // If the signal pin is HIGH, trigger a pulse by setting it LOW and record the current time.
     if (digitalRead(SIGNAL_1TO2_PIN) == HIGH) {
         digitalWrite(SIGNAL_1TO2_PIN, LOW);
         signalStartTime = millis();
+        Serial.println("SIGNAL: Sending LOW pulse to Stage 1 to Stage 2 controller (2 second pulse)");
     }
     // Once the pulse duration has elapsed, set the signal pin HIGH again.
     else if (millis() - signalStartTime >= pulseDuration) {
         digitalWrite(SIGNAL_1TO2_PIN, HIGH);
+        Serial.println("SIGNAL: Completed pulse to Stage 1 to Stage 2 controller");
     }
 }

@@ -1,0 +1,25 @@
+{
+	"folders": [
+		{
+			"name": "Stage 1 to Stage 2",
+			"path": "../../Stage 1 to Stage 2"
+		},
+		{
+			"name": "Stage 2 feb252",
+			"path": "../../Stage 2 feb252"
+		},
+		{
+			"name": "Feb25 Stage 1",
+			"path": ".."
+		},
+		{
+			"name": "Router Arduino",
+			"path": "../../Router Arduino"
+		},
+		{
+			"name": "Test websocket led",
+			"path": "../../Test websocket led"
+		}
+	],
+	"settings": {}
+}
