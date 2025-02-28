@@ -21,6 +21,14 @@
  */
 
 /* ===============================================================================
+ * IMPORTANT NOTE ABOUT SERIAL DEBUGGING:
+ * All Serial.print() and Serial.println() statements have been commented out to improve 
+ * performance. DO NOT DELETE these statements - they should be kept for debugging purposes.
+ * Simply uncomment them when debugging is needed.
+ * ===============================================================================
+ */
+
+/* ===============================================================================
 * UPDATE THE INSTRUCTIONS BELOW AS YOU CHANGE THE CODE. IF THE CODE AND INSTRUCTIONS ARE DIFFERENT THEN PRIORITIZE THE INSTRUCTIONS.
    🔄 CUTTING CYCLE SEQUENCE
 
@@ -325,7 +333,7 @@ void setup() {
     configureSerial();
     
     // Remove unnecessary delay
-    Serial.println("Serial initialized and ready");
+    // Serial.println("Serial initialized and ready");
     
     configureSwitches();
     configureMotorsForHoming();
@@ -335,12 +343,12 @@ void setup() {
     pinMode(PIN_WOOD_SENSOR, INPUT_PULLUP);
     woodSensor.attach(PIN_WOOD_SENSOR, INPUT_PULLUP);
     woodSensor.interval(DEBOUNCE_INTERVAL);
-    Serial.println("Wood sensor configured on pin 34 (active LOW)");
+    // Serial.println("Wood sensor configured on pin 34 (active LOW)");
     
     // Configure the 1to2 signal pin
     pinMode(SIGNAL_1TO2_PIN, OUTPUT);
     digitalWrite(SIGNAL_1TO2_PIN, HIGH);  // Inactive by default
-    Serial.println("Signal pin configured");
+    // Serial.println("Signal pin configured");
     
     printSetupComplete();
     if (!validateConfiguration()) {
@@ -348,13 +356,13 @@ void setup() {
     }
 
     // Remove unnecessary delay before starting homing sequence
-    Serial.println("Starting homing sequence...");
+    // Serial.println("Starting homing sequence...");
 }
 
 void loop() {
-    // Debug LED to show the loop is running
+    // Debug LED to show the loop is running - only if not in homing state
     static unsigned long lastBlink = 0;
-    if (millis() - lastBlink > 500) {
+    if (millis() - lastBlink > 500 && currentState != HOMING) {
         digitalWrite(PIN_BLUE_LED, !digitalRead(PIN_BLUE_LED));
         lastBlink = millis();
         
@@ -384,6 +392,7 @@ void loop() {
     // Run the homing sequence until complete
     if (!startupComplete) {
         runHomingSequence();
+        // Don't call updateLEDs() here, as runHomingSequence() handles LEDs directly
     } else {
         // System is ready, handle normal operation
         if (currentState == READY) {
@@ -416,8 +425,10 @@ void loop() {
     updateSystemState();
     reportSystemStatus();
     
-    // Update LEDs after state changes
-    updateLEDs();
+    // Update LEDs after state changes - only if not in homing
+    if (currentState != HOMING) {
+        updateLEDs();
+    }
 }
 
 // ---------------------
@@ -427,10 +438,10 @@ void configureSerial() {
     Serial.begin(115200);
     // Minimal delay for serial initialization - 50ms is typically sufficient
     delay(50);
-    Serial.println("----------------------------------------");
-    Serial.println("Serial communication initialized");
-    Serial.println("AUTOMATED TABLE SAW CONTROL SYSTEM");
-    Serial.println("----------------------------------------");
+    // Serial.println("----------------------------------------");
+    // Serial.println("Serial communication initialized");
+    // Serial.println("AUTOMATED TABLE SAW CONTROL SYSTEM");
+    // Serial.println("----------------------------------------");
     
     // Configure LED pins
     pinMode(PIN_RED_LED, OUTPUT);
@@ -444,7 +455,7 @@ void configureSerial() {
     digitalWrite(PIN_GREEN_LED, LOW);
     digitalWrite(PIN_BLUE_LED, LOW);
     
-    Serial.println("LED indicators configured");
+    // Serial.println("LED indicators configured");
 }
 
 void configureSwitches() {
@@ -452,22 +463,22 @@ void configureSwitches() {
     pinMode(PIN_CUT_MOTOR_POSITION_SWITCH, INPUT_PULLUP);
     cutSwitchDebouncer.attach(PIN_CUT_MOTOR_POSITION_SWITCH, INPUT_PULLUP);
     cutSwitchDebouncer.interval(DEBOUNCE_INTERVAL);
-    Serial.println("Cut motor position switch configured with pullup");
+    // Serial.println("Cut motor position switch configured with pullup");
     
     pinMode(PIN_POSITION_MOTOR_POSITION_SWITCH, INPUT_PULLUP);
     positionSwitchDebouncer.attach(PIN_POSITION_MOTOR_POSITION_SWITCH, INPUT_PULLUP);
     positionSwitchDebouncer.interval(DEBOUNCE_INTERVAL);
-    Serial.println("Position motor position switch configured with pullup");
+    // Serial.println("Position motor position switch configured with pullup");
     
     pinMode(PIN_RELOAD_SWITCH, INPUT_PULLUP);
     reloadSwitch.attach(PIN_RELOAD_SWITCH, INPUT_PULLUP);
     reloadSwitch.interval(DEBOUNCE_INTERVAL);
-    Serial.println("Reload switch configured with pullup");
+    // Serial.println("Reload switch configured with pullup");
     
     pinMode(PIN_START_CYCLE_SWITCH, INPUT_PULLUP);
     startCycleSwitch.attach(PIN_START_CYCLE_SWITCH, INPUT_PULLUP);
     startCycleSwitch.interval(DEBOUNCE_INTERVAL);
-    Serial.println("Start cycle switch configured with pullup");
+    // Serial.println("Start cycle switch configured with pullup");
     
     // Force an initial update of all switches
     cutSwitchDebouncer.update();
@@ -476,14 +487,14 @@ void configureSwitches() {
     startCycleSwitch.update();
     
     // Print initial switch states
-    Serial.print("Initial switch states - Cut: ");
-    Serial.print(cutSwitchDebouncer.read());
-    Serial.print(", Position: ");
-    Serial.print(positionSwitchDebouncer.read());
-    Serial.print(", Reload: ");
-    Serial.print(reloadSwitch.read());
-    Serial.print(", Start: ");
-    Serial.println(startCycleSwitch.read());
+    // Serial.print("Initial switch states - Cut: ");
+    // Serial.print(cutSwitchDebouncer.read());
+    // Serial.print(", Position: ");
+    // Serial.print(positionSwitchDebouncer.read());
+    // Serial.print(", Reload: ");
+    // Serial.print(reloadSwitch.read());
+    // Serial.print(", Start: ");
+    // Serial.println(startCycleSwitch.read());
 }
 
 void configureMotorsForHoming() {
@@ -492,15 +503,15 @@ void configureMotorsForHoming() {
     cutMotor.setMaxSpeed(homingSpeed / 2);
     cutMotor.setAcceleration(CUT_MOTOR_ACCEL / 4); // Even gentler acceleration - reduced from /2 to /4
     cutMotor.moveTo(100000 * HOME_DIRECTION);
-    Serial.println("Cut motor configured for homing with smooth acceleration curve");
+    // Serial.println("Cut motor configured for homing with smooth acceleration curve");
     
     // Configure position motor for homing with proper acceleration curve
     positionMotor.setMaxSpeed(homingSpeed / 1.5);
     positionMotor.setAcceleration(POSITION_MOTOR_ACCEL / 2); // Gentler acceleration
     positionMotor.moveTo(100000 * POSITION_HOME_DIRECTION);
-    Serial.println("Position motor configured for homing");
+    // Serial.println("Position motor configured for homing");
     
-    Serial.println("Motors enabled and ready to move");
+    // Serial.println("Motors enabled and ready to move");
 }
 
 void configureClamps() {
@@ -510,13 +521,13 @@ void configureClamps() {
     // Both clamps engaged (LOW) initially
     digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
     digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_ENGAGED);
-    Serial.println("Clamps configured - Both clamps engaged (LOW) initially");
+    // Serial.println("Clamps configured - Both clamps engaged (LOW) initially");
 }
 
 void printSetupComplete() {
-    Serial.println("----------------------------------------");
-    Serial.println("Setup complete - Beginning homing sequence");
-    Serial.println("----------------------------------------");
+    // Serial.println("----------------------------------------");
+    // Serial.println("Setup complete - Beginning homing sequence");
+    // Serial.println("----------------------------------------");
 }
 
 // ---------------------
@@ -542,6 +553,19 @@ void reportInitialStateAndCheckHoming() {
     Serial.print("Reload Switch State: ");
     Serial.println(reloadSwitch.read() == HIGH ? "ACTIVATED" : "NOT ACTIVATED");
     Serial.println("----------------------------------------");
+    
+    // Set system state to HOMING if either motor needs to be homed
+    if (!cutMotorHomed || !positionMotorHomed) {
+        currentState = HOMING;
+        Serial.println("Entering HOMING state");
+        
+        // Initialize LEDs for homing - turn off all LEDs except green
+        digitalWrite(PIN_RED_LED, LOW);
+        digitalWrite(PIN_YELLOW_LED, LOW);
+        digitalWrite(PIN_BLUE_LED, LOW);
+        digitalWrite(PIN_GREEN_LED, HIGH);  // Start with green LED on
+        Serial.println("Green LED initialized for homing sequence");
+    }
     
     if (cutSwitchDebouncer.read() == HIGH) {
         cutMotorHomed = true;
@@ -653,6 +677,29 @@ void handlePositionMotorHoming() {
 void runHomingSequence() {
     static unsigned long homingStartTime = millis();
     static bool homingTimeoutReported = false;
+    
+    // Set system state to HOMING
+    currentState = HOMING;
+    
+    // Handle green LED blinking once per second during homing
+    static unsigned long lastLedBlinkTime = 0;
+    static bool ledState = false;
+    
+    // Force all other LEDs off and control green LED directly
+    digitalWrite(PIN_RED_LED, LOW);
+    digitalWrite(PIN_YELLOW_LED, LOW);
+    digitalWrite(PIN_BLUE_LED, LOW);
+    
+    // Blink green LED once per second
+    if (millis() - lastLedBlinkTime >= 200) {  // Blink once per second
+        ledState = !ledState;
+        digitalWrite(PIN_GREEN_LED, ledState);
+        lastLedBlinkTime = millis();
+        
+        // Debug message to confirm LED state
+        Serial.print("Green LED: ");
+        Serial.println(ledState ? "ON" : "OFF");
+    }
     
     // Reduced debug output - only print every 5 seconds
     static unsigned long lastDebugTime = 0;
@@ -1184,6 +1231,11 @@ bool moveToPosition(AccelStepper& motor, long position, float speed, float accel
 }
 
 void updateLEDs() {
+    // Skip LED updates during homing - we handle this separately in runHomingSequence()
+    if (currentState == HOMING) {
+        return;
+    }
+    
     // Turn all LEDs off first
     digitalWrite(PIN_RED_LED, LOW);
     digitalWrite(PIN_YELLOW_LED, LOW);
@@ -1204,8 +1256,7 @@ void updateLEDs() {
     // Set appropriate LED based on system state
     switch(currentState) {
         case STARTUP:
-        case HOMING:
-            digitalWrite(PIN_BLUE_LED, HIGH);    // Blue for setup/homing
+            digitalWrite(PIN_BLUE_LED, HIGH);    // Blue for setup
             break;
             
         case READY:
