@@ -691,7 +691,7 @@ void runHomingSequence() {
     digitalWrite(PIN_BLUE_LED, LOW);
     
     // Blink green LED once per second
-    if (millis() - lastLedBlinkTime >= 200) {  // Blink once per second
+    if (millis() - lastLedBlinkTime >= 700) {  // Blink once per second
         ledState = !ledState;
         digitalWrite(PIN_GREEN_LED, ledState);
         lastLedBlinkTime = millis();
