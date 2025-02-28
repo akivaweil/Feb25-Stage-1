@@ -324,8 +324,7 @@ void setup() {
     // Continue with normal setup
     configureSerial();
     
-    // Add a delay to ensure serial is ready
-    delay(1000);
+    // Remove unnecessary delay
     Serial.println("Serial initialized and ready");
     
     configureSwitches();
@@ -348,9 +347,7 @@ void setup() {
         while (1) { delay(1000); }  // Halt system if configuration fails
     }
 
-    // Add delay before starting homing sequence
-    Serial.println("Waiting 500ms before starting homing sequence...");
-    delay(500);
+    // Remove unnecessary delay before starting homing sequence
     Serial.println("Starting homing sequence...");
 }
 
@@ -428,7 +425,8 @@ void loop() {
 // ---------------------
 void configureSerial() {
     Serial.begin(115200);
-    delay(1000);  // Wait for serial initialization
+    // Minimal delay for serial initialization - 50ms is typically sufficient
+    delay(50);
     Serial.println("----------------------------------------");
     Serial.println("Serial communication initialized");
     Serial.println("AUTOMATED TABLE SAW CONTROL SYSTEM");
