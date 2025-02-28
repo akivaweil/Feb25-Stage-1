@@ -236,7 +236,7 @@ const float POSITION_MOTOR_TRAVEL = 3.35;  // 3.35 inches position travel
 const unsigned long CLAMP_OPERATION_DELAY = 50;  // 50ms clamp delay
 
 // Motor speeds and accelerations
-const float CUT_MOTOR_SPEED = 150;
+const float CUT_MOTOR_SPEED = 175;
 //SAVE: const float CUT_MOTOR_SPEED = 100;
 const float CUT_MOTOR_RETURN_SPEED = 10000;
 const float POSITION_MOTOR_SPEED = 5000;
