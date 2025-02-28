@@ -742,6 +742,24 @@ void runHomingSequence() {
 void performCutCycle() {
     Serial.println("Starting cut cycle sequence");
     
+    // Check wood sensor immediately at cycle start
+    // Update the wood sensor reading multiple times to ensure accuracy
+    for (int i = 0; i < 3; i++) {
+        woodSensor.update();
+        delay(5); // Small delay between readings
+    }
+    
+    // Check if wood is present
+    bool woodPresent = (woodSensor.read() == LOW);
+    Serial.print("Wood sensor reading at cycle start: ");
+    Serial.println(woodPresent ? "LOW (wood present)" : "HIGH (no wood)");
+    
+    // Update mode flag immediately based on current sensor reading
+    noWoodMode = !woodPresent;
+    
+    // Update LEDs to reflect the current mode
+    updateLEDs();
+    
     // Configure the cut motor for normal operation
     cutMotor.setMaxSpeed(CUT_MOTOR_SPEED);
     cutMotor.setAcceleration(CUT_MOTOR_ACCEL);
@@ -757,19 +775,19 @@ void performCutCycle() {
         cutMotor.run();
     }
     
-    // CRITICAL: Check wood sensor immediately before deciding which mode to enter
+    // Recheck wood sensor after cut is complete (for consistency with previous behavior)
     // Update the wood sensor reading multiple times to ensure accuracy
     for (int i = 0; i < 3; i++) {
         woodSensor.update();
         delay(5); // Small delay between readings
     }
     
-    // Final reading to determine wood presence
-    bool woodPresent = (woodSensor.read() == LOW);
-    Serial.print("Wood sensor reading at decision point: ");
+    // Final reading to confirm wood presence
+    woodPresent = (woodSensor.read() == LOW);
+    Serial.print("Wood sensor reading after cut: ");
     Serial.println(woodPresent ? "LOW (wood present)" : "HIGH (no wood)");
     
-    // Update mode flag immediately based on current sensor reading
+    // Update mode flag based on current sensor reading
     noWoodMode = !woodPresent;
     
     // Update LEDs to reflect the current mode
