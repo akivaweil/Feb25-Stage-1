@@ -238,11 +238,11 @@ const unsigned long CLAMP_OPERATION_DELAY = 50;  // 50ms clamp delay
 // Motor speeds and accelerations
 const float CUT_MOTOR_SPEED = 175;
 //SAVE: const float CUT_MOTOR_SPEED = 100;
-const float CUT_MOTOR_RETURN_SPEED = 10000;
-const float POSITION_MOTOR_SPEED = 5000;
+const float CUT_MOTOR_RETURN_SPEED = 15000;
+const float POSITION_MOTOR_SPEED = 50000;
 const float POSITION_MOTOR_RETURN_SPEED = 20000;
 const float CUT_MOTOR_ACCEL = 4000;
-const float POSITION_MOTOR_ACCEL = 10000;
+const float POSITION_MOTOR_ACCEL = 15000;
 
 // ---------------------
 // Motor Controllers
@@ -282,7 +282,7 @@ String lastError = "";
 // Timer for clamp sequencing
 unsigned long secureClampTimer = 0;
 bool secureClampRetractPending = false;
-const unsigned long SECURE_CLAMP_DELAY = 100;  // 100ms delay
+const unsigned long SECURE_CLAMP_DELAY = 200;  // 100ms delay
 
 // ---------------------
 // Function Prototypes
@@ -594,17 +594,15 @@ void handleCutMotorHoming() {
                 cutMotor.setSpeed(0);
                 Serial.println("Cut motor home switch activated!");
                 cutMotor.setCurrentPosition(0);
-                // Now move away a quarter inch using smooth acceleration
-                cutMotor.setMaxSpeed(HOME_SPEED / 3);
-                cutMotor.setAcceleration(CUT_MOTOR_ACCEL / 8);
-                cutMotor.moveTo(0.25 * STEPS_PER_INCH * -HOME_DIRECTION);
-                Serial.println("Moving cut motor away from home switch incrementally...");
-                cutHomingStage = 1;
+                // Remove the offset - don't move away from home switch
+                cutMotorHomed = true;
+                Serial.println("Cut motor homed at switch position");
+                cutHomingStage = 2; // finished - skip the move-away phase
             } else {
                 cutMotor.run();
             }
         }
-        // Stage 1: non-blocking move-away phase
+        // Stage 1: non-blocking move-away phase - now skipped
         else if (cutHomingStage == 1) {
             cutMotor.run();
             // When the target is reached, zero the position and mark homed
@@ -844,6 +842,55 @@ void performCutCycle() {
                 if (cutMotor.distanceToGo() == 0) {
                     cutMotorDone = true;
                     Serial.println("Cut motor reached home");
+                    
+                    // SAFETY CHECK: Immediately verify cut motor is actually at home position
+                    updateSwitches(); // Ensure switch readings are current
+                    if (cutSwitchDebouncer.read() != HIGH) {
+                        // Cut motor position switch is not activated - potential belt slippage
+                        Serial.println("ERROR: Cut motor not at home position! Possible belt slippage detected.");
+                        
+                        // Stop position motor immediately if it's still running
+                        if (!positionMotorDone) {
+                            positionMotor.stop();
+                            positionMotorDone = true;
+                            Serial.println("Position motor stopped due to cut motor position error");
+                        }
+                        
+                        // Set error state with blinking red and yellow LEDs
+                        bool errorAcknowledged = false;
+                        bool ledState = false;
+                        unsigned long lastBlinkTime = 0;
+                        const unsigned long BLINK_INTERVAL = 250; // 250ms for fast blinking
+                        
+                        while (!errorAcknowledged) {
+                            // Blink red and yellow LEDs alternately
+                            if (millis() - lastBlinkTime > BLINK_INTERVAL) {
+                                ledState = !ledState;
+                                digitalWrite(PIN_RED_LED, ledState);
+                                digitalWrite(PIN_YELLOW_LED, !ledState);
+                                lastBlinkTime = millis();
+                            }
+                            
+                            // Check for reset condition (reload switch activation)
+                            updateSwitches();
+                            if (reloadSwitch.read() == HIGH) {
+                                delay(500); // Debounce
+                                updateSwitches();
+                                if (reloadSwitch.read() == HIGH) {
+                                    errorAcknowledged = true;
+                                    Serial.println("Error acknowledged via reload switch. Resetting system.");
+                                }
+                            }
+                        }
+                        
+                        // Turn off error LEDs
+                        digitalWrite(PIN_RED_LED, LOW);
+                        digitalWrite(PIN_YELLOW_LED, LOW);
+                        
+                        // Return to ready state without moving position motor forward
+                        currentState = READY;
+                        return;
+                    }
                 }
             }
             if (millis() - signalStartTime >= 1000) {
@@ -858,6 +905,48 @@ void performCutCycle() {
         
         // STEP 6: Wait an additional 100ms before starting the final move.
         delay(100);
+        
+        // SAFETY CHECK: Verify cut motor is at home position before moving position motor forward
+        updateSwitches(); // Ensure switch readings are current
+        if (cutSwitchDebouncer.read() != HIGH) {
+            // Cut motor position switch is not activated - potential belt slippage
+            Serial.println("ERROR: Cut motor not at home position! Possible belt slippage detected.");
+            
+            // Set error state with blinking red and yellow LEDs
+            bool errorAcknowledged = false;
+            bool ledState = false;
+            unsigned long lastBlinkTime = 0;
+            const unsigned long BLINK_INTERVAL = 250; // 250ms for fast blinking
+            
+            while (!errorAcknowledged) {
+                // Blink red and yellow LEDs alternately
+                if (millis() - lastBlinkTime > BLINK_INTERVAL) {
+                    ledState = !ledState;
+                    digitalWrite(PIN_RED_LED, ledState);
+                    digitalWrite(PIN_YELLOW_LED, !ledState);
+                    lastBlinkTime = millis();
+                }
+                
+                // Check for reset condition (reload switch activation)
+                updateSwitches();
+                if (reloadSwitch.read() == HIGH) {
+                    delay(500); // Debounce
+                    updateSwitches();
+                    if (reloadSwitch.read() == HIGH) {
+                        errorAcknowledged = true;
+                        Serial.println("Error acknowledged via reload switch. Resetting system.");
+                    }
+                }
+            }
+            
+            // Turn off error LEDs
+            digitalWrite(PIN_RED_LED, LOW);
+            digitalWrite(PIN_YELLOW_LED, LOW);
+            
+            // Return to ready state without moving position motor forward
+            currentState = READY;
+            return;
+        }
         
         // STEP 7: Move position motor to final position (3.45 inches target).
         Serial.println("Moving position motor to 3.45\"");
