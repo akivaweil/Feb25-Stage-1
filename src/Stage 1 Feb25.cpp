@@ -1062,6 +1062,36 @@ void performCutCycle() {
         }
         
         // Serial.println("Motors returned to home positions");
+        
+        // Add the requested movements for no wood mode
+        // 1. Retract the position clamp
+        digitalWrite(PIN_POSITION_CLAMP, CLAMP_DISENGAGED);
+        delay(CLAMP_OPERATION_DELAY);
+        
+        // 2. Move the position motor to 3.45 inches
+        positionMotor.setMaxSpeed(POSITION_MOTOR_SPEED);
+        positionMotor.setAcceleration(POSITION_MOTOR_ACCEL);
+        positionMotor.moveTo(POSITION_STEPS_PER_INCH * 3.45);
+        while (positionMotor.distanceToGo() != 0) {
+            positionMotor.run();
+        }
+        
+        // 3. Extend the position clamp
+        digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
+        delay(CLAMP_OPERATION_DELAY);
+        
+        // 4. Move the position motor back to home position
+        positionMotor.setMaxSpeed(POSITION_MOTOR_RETURN_SPEED);
+        positionMotor.setAcceleration(POSITION_MOTOR_ACCEL);
+        positionMotor.moveTo(0);
+        while (positionMotor.distanceToGo() != 0) {
+            positionMotor.run();
+        }
+        
+        // 5. Retract the position clamp
+        digitalWrite(PIN_POSITION_CLAMP, CLAMP_DISENGAGED);
+        delay(CLAMP_OPERATION_DELAY);
+        
         // Serial.println("Waiting for switch input...");
         
         // Wait for user input
