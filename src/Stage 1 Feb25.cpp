@@ -102,7 +102,7 @@
    MOTOR CONFIGURATIONS:
    1. Cut Motor (Stepper)
       - PUL: 22, DIR: 23
-      - Steps per inch: 127 (GT2 belt)
+      - Steps per inch: 76 (GT2 belt with 30-tooth pulley)
       - Normal speed: 100 steps/sec
       - Return speed: 1250 steps/sec
       - Acceleration: 2000 steps/sec²
@@ -237,7 +237,9 @@ const int HOME_DIRECTION = -1;             // Cut motor homing direction (-1)
 const int POSITION_HOME_DIRECTION = -1;    
 const int DEBOUNCE_INTERVAL = 10;          // Debounce time (ms) - changed from 50ms to 10ms
 
-const int STEPS_PER_INCH = 127;            // Cut motor steps per inch
+// Updated steps per inch for the cut motor with 30-tooth pulley
+// Original value was 127 steps per inch
+const int STEPS_PER_INCH = 76;            // Cut motor steps per inch (adjusted for 30-tooth pulley)
 const int POSITION_STEPS_PER_INCH = 1000;  // Position motor steps per inch
 const float CUT_MOTOR_TRAVEL = 9;          // 9 inches cut travel
 const float POSITION_MOTOR_TRAVEL = 3.35;  // 3.35 inches position travel
