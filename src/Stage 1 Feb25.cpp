@@ -1171,11 +1171,11 @@ void reportSystemStatus() {
         // Serial.println("----------------");
         // Serial.print("State: ");
         switch(currentState) {
-            case STARTUP: // Serial.println("STARTUP"); break;
-            case HOMING: // Serial.println("HOMING"); break;
-            case READY: // Serial.println("READY"); break;
-            case CUTTING: // Serial.println("CUTTING"); break;
-            case ERROR: // Serial.println("ERROR"); break;
+            case STARTUP: /* Serial.println("STARTUP"); */ break;
+            case HOMING: /* Serial.println("HOMING"); */ break;
+            case READY: /* Serial.println("READY"); */ break;
+            case CUTTING: /* Serial.println("CUTTING"); */ break;
+            case ERROR: /* Serial.println("ERROR"); */ break;
         }
         // Serial.print("Cut Motor: ");
         // Serial.print(cutMotor.currentPosition());
