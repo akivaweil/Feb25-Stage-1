@@ -251,7 +251,7 @@ const float CUT_MOTOR_SPEED = 175;
 const float CUT_MOTOR_RETURN_SPEED = 15000;
 const float POSITION_MOTOR_SPEED = 50000;
 const float POSITION_MOTOR_RETURN_SPEED = 20000;
-const float CUT_MOTOR_ACCEL = 4000;
+const float CUT_MOTOR_ACCEL = 3000;
 const float POSITION_MOTOR_ACCEL = 15000;
 
 // ---------------------
