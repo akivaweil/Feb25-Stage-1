@@ -246,7 +246,7 @@ const float POSITION_MOTOR_TRAVEL = 3.35;  // 3.35 inches position travel
 const unsigned long CLAMP_OPERATION_DELAY = 50;  // 50ms clamp delay
 
 // Motor speeds and accelerations
-const float CUT_MOTOR_SPEED = 175;
+const float CUT_MOTOR_SPEED = 150;
 //SAVE: const float CUT_MOTOR_SPEED = 100;
 const float CUT_MOTOR_RETURN_SPEED = 15000;
 const float POSITION_MOTOR_SPEED = 50000;
@@ -541,6 +541,7 @@ void updateSwitches() {
     positionSwitchDebouncer.update();
     reloadSwitch.update();
     startCycleSwitch.update();
+    woodSensor.update();  // Make sure wood sensor is also updated
 }
 
 void reportInitialStateAndCheckHoming() {
@@ -1066,17 +1067,35 @@ void performCutCycle() {
         // Wait for user input
         while (true) {
             updateSwitches();
+            
+            // Check reload switch with improved detection
             if (reloadSwitch.read() == HIGH) {
-                handleReloadSwitch();
-                break;
+                // Add a small delay and check again to ensure it's a stable reading
+                delay(20);
+                updateSwitches();
+                if (reloadSwitch.read() == HIGH) {
+                    // Serial.println("Reload switch detected in no-wood mode");
+                    handleReloadSwitch();
+                    break;
+                }
             }
+            
             if (startCycleSwitch.read() == LOW) {
                 while (startCycleSwitch.read() == LOW) {
                     updateSwitches();
+                    
+                    // Check reload switch with improved detection here too
                     if (reloadSwitch.read() == HIGH) {
-                        handleReloadSwitch();
-                        return;
+                        // Add a small delay and check again to ensure it's a stable reading
+                        delay(20);
+                        updateSwitches();
+                        if (reloadSwitch.read() == HIGH) {
+                            // Serial.println("Reload switch detected while waiting for start cycle");
+                            handleReloadSwitch();
+                            return;
+                        }
                     }
+                    
                     delay(50);
                 }
                 break;
@@ -1094,16 +1113,25 @@ void handleReloadSwitch() {
         inReloadMode = true;  // Enter reload mode
         noWoodMode = false;   // Clear no-wood mode when entering reload mode
         // Serial.println("Reload switch activated - Retracting clamps");
+        
+        // Ensure both clamps are disengaged
         digitalWrite(PIN_POSITION_CLAMP, CLAMP_DISENGAGED);
         digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_DISENGAGED);
+        
+        // Add a small delay to ensure the clamps have time to respond
+        delay(10);
+        
         updateLEDs();  // Update LEDs to show reload mode
     }
     else if (reloadSwitch.read() == LOW && wasPressed) {
         wasPressed = false;
         inReloadMode = false;  // Exit reload mode
         // Serial.println("Reload switch released - Re-engaging clamps");
+        
+        // Ensure both clamps are engaged
         digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
         digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_ENGAGED);
+        
         delay(CLAMP_OPERATION_DELAY);  // Give clamps time to engage
         updateLEDs();  // Update LEDs to exit reload mode
     }
