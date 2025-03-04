@@ -46,7 +46,7 @@ SystemState currentState = STARTUP;
 // Motor Configuration
 const int CUT_MOTOR_STEPS_PER_INCH = 76;
 const int POSITION_MOTOR_STEPS_PER_INCH = 1000;
-const float CUT_TRAVEL_DISTANCE = 9.0; // inches
+const float CUT_TRAVEL_DISTANCE = 9.2; // inches
 const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
@@ -630,7 +630,9 @@ void performCuttingOperation() {
             if (cutMotor.distanceToGo() == 0) {
               // Cut motor is home, now extend position cylinder (engage clamp)
               digitalWrite(POSITION_CLAMP, LOW);
-              Serial.println("No-wood sequence: Extending position cylinder (1st time)");
+              // Retract wood secure clamp during no-wood sequence
+              digitalWrite(WOOD_SECURE_CLAMP, HIGH);
+              Serial.println("No-wood sequence: Extending position cylinder (1st time), retracting wood secure clamp");
               cylinderActionTime = millis();
               waitingForCylinder = true;
               // noWoodStage will be incremented after waiting
@@ -696,7 +698,7 @@ void performCuttingOperation() {
             
           case 8: // Wait for final position and complete sequence
             if (positionMotor.distanceToGo() == 0) {
-              // Re-engage wood secure clamp
+              // Re-engage wood secure clamp at the end of the sequence
               digitalWrite(WOOD_SECURE_CLAMP, LOW);
               digitalWrite(YELLOW_LED, LOW);
               digitalWrite(BLUE_LED, HIGH); // Keep blue LED on to indicate waiting for switch reset
@@ -706,7 +708,7 @@ void performCuttingOperation() {
               waitingForCylinder = false;
               cuttingCycleInProgress = false;
               
-              Serial.println("No-wood sequence complete, waiting for start switch reset");
+              Serial.println("No-wood sequence complete, re-engaging wood secure clamp, waiting for start switch reset");
               
               // Instead of going directly to READY state, go to a new state that requires switch reset
               currentState = READY;
