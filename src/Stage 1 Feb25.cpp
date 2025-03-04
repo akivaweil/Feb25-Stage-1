@@ -213,6 +213,10 @@ const int SIGNAL_1TO2_PIN = 19;  // 1to2 signal pin (changed from pin 21)
 const int PIN_WOOD_SENSOR = 34;  // Wood sensor input pin
 Bounce woodSensor = Bounce();
 
+// <<< NEW: Was Wood Suctioned Sensor >>>
+const int PIN_WAS_WOOD_SUCTIONED = 5;  // Was wood suctioned sensor input pin
+Bounce wasWoodSuctionedSensor = Bounce();
+
 // Additional pins
 // If pins 0 and 2 are not used and do not interfere with boot mode,
 // you can comment them out.
@@ -277,12 +281,15 @@ bool startupComplete = false;
 bool initialStateReported = false;
 bool inReloadMode = false;  // Track reload mode state
 bool noWoodMode = false;  // Track no-wood mode state
+bool woodSuctionError = false;  // Flag to track if wood was detected by the waswoodsuctioned sensor after cutting
 
 enum SystemState {
     STARTUP,
     HOMING,
     READY,
     CUTTING,
+    RETURNING,
+    POSITIONING,
     ERROR
 };
 
@@ -319,6 +326,8 @@ void updateLEDs();
 void sendSignalToStage2();
 void reportError(String errorMessage);
 
+// ---------------------
+
 void setup() {
     // Configure LED pins
     pinMode(PIN_RED_LED, OUTPUT);
@@ -347,6 +356,12 @@ void setup() {
     woodSensor.attach(PIN_WOOD_SENSOR, INPUT_PULLUP);
     woodSensor.interval(DEBOUNCE_INTERVAL);
     // Serial.println("Wood sensor configured on pin 34 (active LOW)");
+    
+    // Configure the was wood suctioned sensor on pin 5 (using internal pullup; sensor is active LOW)
+    pinMode(PIN_WAS_WOOD_SUCTIONED, INPUT_PULLUP);
+    wasWoodSuctionedSensor.attach(PIN_WAS_WOOD_SUCTIONED, INPUT_PULLUP);
+    wasWoodSuctionedSensor.interval(DEBOUNCE_INTERVAL);
+    // Serial.println("Was wood suctioned sensor configured on pin 5 (active LOW)");
     
     // Configure the 1to2 signal pin
     pinMode(SIGNAL_1TO2_PIN, OUTPUT);
@@ -542,6 +557,7 @@ void updateSwitches() {
     reloadSwitch.update();
     startCycleSwitch.update();
     woodSensor.update();  // Make sure wood sensor is also updated
+    wasWoodSuctionedSensor.update();  // Make sure was wood suctioned sensor is also updated
 }
 
 void reportInitialStateAndCheckHoming() {
@@ -797,13 +813,17 @@ void performCutCycle() {
     // Update the wood sensor reading multiple times to ensure accuracy
     for (int i = 0; i < 3; i++) {
         woodSensor.update();
+        wasWoodSuctionedSensor.update();
         delay(5); // Small delay between readings
     }
     
     // Check if wood is present
     bool woodPresent = (woodSensor.read() == LOW);
+    bool woodSuctioned = (wasWoodSuctionedSensor.read() == LOW);
     // Serial.print("Wood sensor reading at cycle start: ");
     // Serial.println(woodPresent ? "LOW (wood present)" : "HIGH (no wood)");
+    // Serial.print("Was wood suctioned sensor reading at cycle start: ");
+    // Serial.println(woodSuctioned ? "LOW (wood suctioned)" : "HIGH (not suctioned)");
     
     // Update mode flag immediately based on current sensor reading
     noWoodMode = !woodPresent;
@@ -830,13 +850,25 @@ void performCutCycle() {
     // Update the wood sensor reading multiple times to ensure accuracy
     for (int i = 0; i < 3; i++) {
         woodSensor.update();
+        wasWoodSuctionedSensor.update();
         delay(5); // Small delay between readings
     }
     
     // Final reading to confirm wood presence
     woodPresent = (woodSensor.read() == LOW);
+    woodSuctioned = (wasWoodSuctionedSensor.read() == LOW);
     // Serial.print("Wood sensor reading after cut: ");
     // Serial.println(woodPresent ? "LOW (wood present)" : "HIGH (no wood)");
+    // Serial.print("Was wood suctioned sensor reading after cut: ");
+    // Serial.println(woodSuctioned ? "LOW (wood suctioned)" : "HIGH (not suctioned)");
+    
+    // Set the woodSuctionError flag if the wasWoodSuctionedSensor detects something after the cut
+    if (woodSuctioned) {
+        woodSuctionError = true;
+        // Serial.println("WARNING: Wood suction detected after cut - next cycle will be prevented");
+    } else {
+        woodSuctionError = false;
+    }
     
     // Update mode flag based on current sensor reading
     noWoodMode = !woodPresent;
@@ -1136,27 +1168,66 @@ void performCutCycle() {
 }
 
 void handleReloadSwitch() {
-    static bool wasPressed = false;
-    
-    if (reloadSwitch.read() == HIGH && !wasPressed) {
-        wasPressed = true;
-        inReloadMode = true;  // Enter reload mode
-        noWoodMode = false;   // Clear no-wood mode when entering reload mode
-        // Serial.println("Reload switch activated - Retracting clamps");
+    // Check if reload switch is pressed
+    if (reloadSwitch.read() == HIGH) {
+        // Serial.println("Reload switch pressed");
         
-        // Ensure both clamps are disengaged
+        // Clear any wood suction error when reload is pressed
+        if (woodSuctionError) {
+            woodSuctionError = false;
+            // Serial.println("Wood suction error cleared by reload switch");
+            
+            // Reset error state if we were in error state due to wood suction
+            if (currentState == ERROR && lastError.indexOf("Wood suction") >= 0) {
+                currentState = READY;
+                lastError = "";
+                // Serial.println("System reset to READY state");
+            }
+        }
+        
+        // Enter reload mode
+        inReloadMode = true;
+        
+        // Disengage the position clamp to allow manual positioning
         digitalWrite(PIN_POSITION_CLAMP, CLAMP_DISENGAGED);
-        digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_DISENGAGED);
         
-        // Add a small delay to ensure the clamps have time to respond
-        delay(10);
+        // Serial.println("Entered reload mode - position clamp disengaged");
         
-        updateLEDs();  // Update LEDs to show reload mode
-    }
-    else if (reloadSwitch.read() == LOW && wasPressed) {
-        wasPressed = false;
-        inReloadMode = false;  // Exit reload mode
-        // Serial.println("Reload switch released - Re-engaging clamps");
+        // Update LEDs to show reload mode
+        updateLEDs();
+        
+        // Wait for reload switch to be released
+        while (reloadSwitch.read() == HIGH) {
+            delay(10);
+            reloadSwitch.update();
+        }
+        
+        // Wait for a moment to debounce
+        delay(50);
+        
+        // Wait for reload switch to be pressed again to exit reload mode
+        // Serial.println("Press reload switch again to exit reload mode");
+        
+        // Wait for reload switch to be pressed again
+        bool exitReloadMode = false;
+        while (!exitReloadMode) {
+            reloadSwitch.update();
+            if (reloadSwitch.read() == HIGH) {
+                // Serial.println("Reload switch pressed again - exiting reload mode");
+                
+                // Wait for release
+                while (reloadSwitch.read() == HIGH) {
+                    delay(10);
+                    reloadSwitch.update();
+                }
+                
+                exitReloadMode = true;
+            }
+            delay(10);
+        }
+        
+        // Exit reload mode
+        inReloadMode = false;
         
         // Ensure both clamps are engaged
         digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
@@ -1177,8 +1248,21 @@ void updateSystemState() {
             break;
         case READY:
             if (startCycleSwitch.read() == HIGH) {
-                currentState = CUTTING;
-                // Serial.println("State changed to CUTTING");
+                // Check if wood suction error is active
+                if (woodSuctionError) {
+                    // Prevent cycle start and report error
+                    handleError("Wood suction detected - cycle prevented for safety");
+                    // Serial.println("Cycle prevented: Wood suction detected after previous cut");
+                    // Wait for the start cycle switch to be released
+                    while (startCycleSwitch.read() == HIGH) {
+                        delay(10);
+                        startCycleSwitch.update();
+                    }
+                } else {
+                    // No error, proceed with cycle
+                    currentState = CUTTING;
+                    // Serial.println("State changed to CUTTING");
+                }
             }
             break;
         case CUTTING:
@@ -1305,7 +1389,22 @@ void updateLEDs() {
     digitalWrite(PIN_GREEN_LED, LOW);
     digitalWrite(PIN_BLUE_LED, LOW);
     
-    // First check for reload mode as it overrides normal states
+    // First check for wood suction error as it's a critical safety issue
+    if (woodSuctionError) {
+        // Create a blinking pattern for the red LED to indicate wood suction error
+        static unsigned long lastBlinkTime = 0;
+        static bool redLedState = false;
+        
+        if (millis() - lastBlinkTime > 250) {  // Blink every 250ms (4 times per second)
+            redLedState = !redLedState;
+            lastBlinkTime = millis();
+        }
+        
+        digitalWrite(PIN_RED_LED, redLedState ? HIGH : LOW);
+        return;  // Exit early as this error overrides other states
+    }
+    
+    // Next check for reload mode as it overrides normal states
     if (inReloadMode) {
         digitalWrite(PIN_YELLOW_LED, HIGH);  // Yellow LED for reload mode
         return;  // Exit early as reload mode overrides other states
