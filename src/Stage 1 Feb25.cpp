@@ -282,6 +282,7 @@ bool initialStateReported = false;
 bool inReloadMode = false;  // Track reload mode state
 bool noWoodMode = false;  // Track no-wood mode state
 bool woodSuctionError = false;  // Flag to track if wood was detected by the waswoodsuctioned sensor after cutting
+bool wasWoodSuctioned = true;  // New flag to track wood suction sensor status - true means ok to run (no wood detected)
 
 enum SystemState {
     STARTUP,
@@ -290,7 +291,8 @@ enum SystemState {
     CUTTING,
     RETURNING,
     POSITIONING,
-    ERROR
+    ERROR,
+    ERROR_RESET // New state to handle error reset
 };
 
 SystemState currentState = STARTUP;
@@ -378,6 +380,32 @@ void setup() {
 }
 
 void loop() {
+    // First thing: check if we're in an error state with red LED
+    if (woodSuctionError && currentState == ERROR) {
+        // Only allow LED updates and switch reading when in error state
+        updateSwitches();
+        updateLEDs();
+        
+        // Check for error reset conditions
+        if (reloadSwitch.read() == HIGH) {
+            // Wait for release
+            while (reloadSwitch.read() == HIGH) {
+                updateSwitches();
+                delay(10);
+            }
+            
+            // Reset error flags
+            woodSuctionError = false;
+            currentState = READY;
+            
+            // Update LEDs to reflect new state
+            updateLEDs();
+        }
+        
+        // Skip the rest of the loop to freeze all motor operations
+        return;
+    }
+    
     // Debug LED to show the loop is running - only if not in homing state
     static unsigned long lastBlink = 0;
     if (millis() - lastBlink > 500 && currentState != HOMING) {
@@ -400,6 +428,17 @@ void loop() {
     }
     
     updateSwitches();
+    
+    // Add sensor check to update wasWoodSuctioned flag in each loop iteration
+    // Update wood suction sensor status - sensor active LOW (LOW = wood detected)
+    wasWoodSuctionedSensor.update();
+    if (wasWoodSuctionedSensor.read() == LOW) {
+        // Sensor is detecting wood, set flag to false to pause machine
+        wasWoodSuctioned = false;
+    } else {
+        // No wood detected, machine can run
+        wasWoodSuctioned = true;
+    }
     
     // Report initial state and check for homing (once only)
     if (!initialStateReported) {
@@ -846,29 +885,36 @@ void performCutCycle() {
         cutMotor.run();
     }
     
-    // Recheck wood sensor after cut is complete (for consistency with previous behavior)
+    // IMPORTANT: This is the 9-inch mark where we check the wood suction sensor
+    // Check the wood suction sensor right after cut is complete
+    bool woodDetectedBySuction = false;
+    
+    // Take multiple readings to ensure reliability
+    for (int i = 0; i < 5; i++) {
+        wasWoodSuctionedSensor.update();
+        if (wasWoodSuctionedSensor.read() == LOW) {
+            woodDetectedBySuction = true;
+        }
+        delay(10);
+    }
+    
+    // If wood is detected by suction sensor at the 9-inch mark, set the flag
+    // This is one of the two specific conditions where we want the red LED
+    if (woodDetectedBySuction) {
+        woodSuctionError = true;
+        // Serial.println("WARNING: Wood suction detected after cut - next cycle will be prevented");
+    }
+    
+    // Continue with normal cycle, regardless of wood detection
+    // Recheck wood sensor for general status information
     // Update the wood sensor reading multiple times to ensure accuracy
     for (int i = 0; i < 3; i++) {
         woodSensor.update();
-        wasWoodSuctionedSensor.update();
         delay(5); // Small delay between readings
     }
     
-    // Final reading to confirm wood presence
+    // Final reading to confirm wood presence for the regular workflow
     woodPresent = (woodSensor.read() == LOW);
-    woodSuctioned = (wasWoodSuctionedSensor.read() == LOW);
-    // Serial.print("Wood sensor reading after cut: ");
-    // Serial.println(woodPresent ? "LOW (wood present)" : "HIGH (no wood)");
-    // Serial.print("Was wood suctioned sensor reading after cut: ");
-    // Serial.println(woodSuctioned ? "LOW (wood suctioned)" : "HIGH (not suctioned)");
-    
-    // Set the woodSuctionError flag if the wasWoodSuctionedSensor detects something after the cut
-    if (woodSuctioned) {
-        woodSuctionError = true;
-        // Serial.println("WARNING: Wood suction detected after cut - next cycle will be prevented");
-    } else {
-        woodSuctionError = false;
-    }
     
     // Update mode flag based on current sensor reading
     noWoodMode = !woodPresent;
@@ -876,6 +922,7 @@ void performCutCycle() {
     // Update LEDs to reflect the current mode
     updateLEDs();
     
+    // Continue with normal cycle completion
     if (woodPresent) {
         // Serial.println("Wood detected; proceeding with normal cycle");
         
@@ -1247,29 +1294,76 @@ void updateSystemState() {
             if (startupComplete) currentState = READY;
             break;
         case READY:
-            if (startCycleSwitch.read() == HIGH) {
-                // Check if wood suction error is active
-                if (woodSuctionError) {
-                    // Prevent cycle start and report error
-                    handleError("Wood suction detected - cycle prevented for safety");
-                    // Serial.println("Cycle prevented: Wood suction detected after previous cut");
-                    // Wait for the start cycle switch to be released
-                    while (startCycleSwitch.read() == HIGH) {
-                        delay(10);
-                        startCycleSwitch.update();
-                    }
-                } else {
-                    // No error, proceed with cycle
-                    currentState = CUTTING;
-                    // Serial.println("State changed to CUTTING");
+            // First check if wood suction sensor is active (meaning wood is present)
+            if (!wasWoodSuctioned) {
+                // Wood detected in suction sensor - prevent cycle and show error
+                if (currentState != ERROR) {
+                    // Only update state if not already in error state
+                    currentState = ERROR;
+                    // Serial.println("Cycle prevented: Wood detected in suction sensor");
+                    
+                    // Update LEDs immediately to trigger the red LED freeze
+                    updateLEDs();
+                    
+                    // Return immediately to freeze all operations
+                    return;
                 }
+                
+                // Wait for start cycle switch to be released if it was pressed
+                while (startCycleSwitch.read() == HIGH) {
+                    updateSwitches();
+                    delay(10);
+                }
+            }
+            // Then check for wood suction error from previous cycle
+            else if (woodSuctionError) {
+                currentState = ERROR;
+                // Serial.println("Cycle prevented: Wood suction error detected");
+                
+                // Update LEDs immediately to trigger the red LED freeze
+                updateLEDs();
+                
+                // Return immediately to freeze all operations
+                return;
+                
+                // Wait for the start cycle switch to be released to avoid immediate reset attempts
+                while (startCycleSwitch.read() == HIGH) {
+                    updateSwitches();
+                    delay(10);
+                }
+            } else if (startCycleSwitch.read() == HIGH) {
+                // No error and no wood detected in suction sensor, proceed with cycle
+                currentState = CUTTING;
+                // Serial.println("State changed to CUTTING");
             }
             break;
         case CUTTING:
             // The state will be reset to READY at the end of performCutCycle()
             break;
         case ERROR:
-            // Add error handling if needed
+            // Check if the wood suction sensor is now clear (no wood detected)
+            if (wasWoodSuctioned && !woodSuctionError) {
+                // Sensor is clear, reset to READY state
+                currentState = READY;
+                // Serial.println("Error cleared: Wood suction sensor now clear");
+            }
+            // Also check for reload switch to reset error
+            else if (reloadSwitch.read() == HIGH) {
+                // Wait for release
+                updateSwitches();
+                while (reloadSwitch.read() == HIGH) {
+                    updateSwitches();
+                    delay(10);
+                }
+                
+                // Reset error and return to READY state
+                woodSuctionError = false;
+                currentState = READY;
+                // Serial.println("Error reset via reload switch");
+            }
+            break;
+        case ERROR_RESET:
+            // Optional: Additional handling if needed
             break;
     }
     
@@ -1289,6 +1383,11 @@ void handleError(const String& errorMessage) {
     // Put clamps in a safe state (engaged = LOW).
     digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
     digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_ENGAGED);
+    
+    // Only set woodSuctionError to true for specific error conditions
+    if (errorMessage.indexOf("Cut motor position mismatch") >= 0) {
+        woodSuctionError = true;
+    }
     
     // Update LEDs to show error state
     updateLEDs();
@@ -1389,13 +1488,31 @@ void updateLEDs() {
     digitalWrite(PIN_GREEN_LED, LOW);
     digitalWrite(PIN_BLUE_LED, LOW);
     
-    // First check for wood suction error as it's a critical safety issue
+    // Check for specific error conditions that should trigger the red LED
+    bool shouldShowRedLED = false;
+    
+    // Condition 1: Wood detected by suction sensor after cut
     if (woodSuctionError) {
-        // Create a blinking pattern for the red LED to indicate wood suction error
+        shouldShowRedLED = true;
+                            // Hardware reset the ESP32
+                    // Serial.println("Performing hardware reset due to wood detection in suction sensor");
+                    delay(500); // Short delay to ensure LED update completes
+                    ESP.restart(); // This triggers a hardware reset of the ESP32
+    }
+    
+    // Condition 2: Cut motor not properly homed after a cut
+    // This is handled in performCutCycle() with specific checks
+    
+    // Only show red LED for specific error conditions
+    if (shouldShowRedLED) {
         static unsigned long lastBlinkTime = 0;
         static bool redLedState = false;
         
-        if (millis() - lastBlinkTime > 250) {  // Blink every 250ms (4 times per second)
+        // Use standard 250ms blink for errors
+        unsigned long blinkInterval = 250;
+        
+        // Update LED state based on the appropriate interval
+        if (millis() - lastBlinkTime > blinkInterval) {
             redLedState = !redLedState;
             lastBlinkTime = millis();
         }
@@ -1430,7 +1547,9 @@ void updateLEDs() {
             break;
             
         case ERROR:
-            digitalWrite(PIN_RED_LED, HIGH);     // Red for error
+            // Only show red LED for specific error conditions, which we handled above
+            // For other errors, show yellow LED
+            digitalWrite(PIN_YELLOW_LED, HIGH);
             break;
     }
 }
@@ -1466,6 +1585,11 @@ void reportError(String errorMessage) {
     // Put clamps in a safe state (engaged = LOW).
     digitalWrite(PIN_POSITION_CLAMP, CLAMP_ENGAGED);
     digitalWrite(PIN_SECURE_WOOD_CLAMP, CLAMP_ENGAGED);
+    
+    // Only set woodSuctionError to true for specific error conditions
+    if (errorMessage.indexOf("Cut motor position mismatch") >= 0) {
+        woodSuctionError = true;
+    }
     
     // Update LEDs to show error state
     updateLEDs();
