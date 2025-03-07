@@ -737,7 +737,7 @@ void performCuttingOperation() {
           case 2: // Move position motor to 2.0 inches
             positionMotor.moveTo(2.0 * POSITION_MOTOR_STEPS_PER_INCH);
             // Serial.println("No-wood sequence: Moving position motor to 2.0 inches");
-            noWoodStage = 4;
+            noWoodStage = 3;
             break;
             
           case 3: // Wait for position motor to reach 2.0 inches
@@ -751,13 +751,30 @@ void performCuttingOperation() {
             }
             break;
             
-          case 4: // Move position motor to 3.45 inches final time
-            positionMotor.moveTo(3.45 * POSITION_MOTOR_STEPS_PER_INCH);
-            // Serial.println("No-wood sequence: Moving position motor to 3.45 inches (final)");
-            noWoodStage = 8;
+          case 4: // Move position motor to home again
+            positionMotor.moveTo(0);
+            // Serial.println("No-wood sequence: Moving position motor to home (2nd time)");
+            noWoodStage = 5;
             break;
             
-          case 5: // Wait for final position and complete sequence
+          case 5: // Wait for position motor to reach home
+            if (positionMotor.distanceToGo() == 0) {
+              // Retract position cylinder
+              digitalWrite(POSITION_CLAMP, HIGH);
+              // Serial.println("No-wood sequence: Retracting position cylinder (2nd time)");
+              cylinderActionTime = millis();
+              waitingForCylinder = true;
+              // noWoodStage will be incremented after waiting
+            }
+            break;
+            
+          case 6: // Move position motor to 3.45 inches final time
+            positionMotor.moveTo(3.45 * POSITION_MOTOR_STEPS_PER_INCH);
+            // Serial.println("No-wood sequence: Moving position motor to 3.45 inches (final)");
+            noWoodStage = 7;
+            break;
+            
+          case 7: // Wait for final position and complete sequence
             if (positionMotor.distanceToGo() == 0) {
               // Extra sensor check: ensure homing sensor is stably pressed before finalizing the sequence.
               bool sensorStable = true;
@@ -783,8 +800,8 @@ void performCuttingOperation() {
                 break;
               }
               // Sensor is stably pressed. Now, proceed with completion.
-              // Re-engage wood secure clamp at the end of the sequence
-              digitalWrite(WOOD_SECURE_CLAMP, LOW);
+              // Keep wood secure clamp retracted at the end of the sequence
+              digitalWrite(WOOD_SECURE_CLAMP, HIGH); // Keep clamp retracted (HIGH = retracted)
               digitalWrite(YELLOW_LED, LOW);
               digitalWrite(BLUE_LED, HIGH); // Keep blue LED on to indicate waiting for switch reset
               
