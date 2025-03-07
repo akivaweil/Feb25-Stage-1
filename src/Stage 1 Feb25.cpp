@@ -537,16 +537,7 @@ void performCuttingOperation() {
         
         if (noWoodDetected) {
           // Serial.println("No wood detected: entering no-wood mode");
-          // Start cut motor return
-          cutMotor.moveTo(0);
-          
-          // Begin position motor return while keeping position clamp engaged
-          digitalWrite(POSITION_CLAMP, LOW); // Ensure position clamp is engaged during initial movement
-          
-          // Move 0.1 inches back from current position (which should be at POSITION_TRAVEL_DISTANCE)
-          long currentPos = positionMotor.currentPosition();
-          positionMotor.moveTo(currentPos - (0.1 * POSITION_MOTOR_STEPS_PER_INCH));
-          
+          performNoWoodOperation();
           cuttingStage = 6;
         } else {
           // Normal operation path (wood is detected)
@@ -699,6 +690,7 @@ void performCuttingOperation() {
       static int noWoodStage = 0;
       static unsigned long cylinderActionTime = 0;
       static bool waitingForCylinder = false;
+      static bool positionMotorStarted = false;
       
       // Handle cylinder timing without delays
       if (waitingForCylinder && (millis() - cylinderActionTime >= 150)) {
@@ -709,56 +701,46 @@ void performCuttingOperation() {
       
       if (!waitingForCylinder) {
         switch (noWoodStage) {
-          case 0: // First, wait for initial 0.1 inch backward movement
-            if (positionMotor.distanceToGo() == 0) {
-              // After 0.1 inch, disengage position clamp and wood secure clamp
-              digitalWrite(POSITION_CLAMP, HIGH);  // Retract position clamp after 0.1 inch movement
-              digitalWrite(WOOD_SECURE_CLAMP, HIGH); // Disengage wood secure clamp
-              
-              // Set the new acceleration profile for returning home
-              positionMotor.setAcceleration(POSITION_RETURN_ACCELERATION);
-              
-              // Continue position motor movement to home
+          case 0: // Start position motor to home immediately while cut motor is returning
+            if (!positionMotorStarted) {
+              // Retract wood secure clamp during no-wood sequence
+              digitalWrite(WOOD_SECURE_CLAMP, HIGH);
+              // Start position motor moving to home immediately
               positionMotor.moveTo(0);
-              noWoodStage = 1;
+              positionMotorStarted = true;
+              // Serial.println("No-wood sequence: Starting position motor to home while cut motor returns");
             }
-            break;
             
-          case 1: // Wait for cut motor to return to home
+            // Check if cut motor is home
             if (cutMotor.distanceToGo() == 0) {
               // Cut motor is home, now extend position cylinder (engage clamp)
               digitalWrite(POSITION_CLAMP, LOW);
-              // Serial.println("No-wood sequence: Extending position cylinder (1st time)");
+              // Serial.println("No-wood sequence: Cut motor home, extending position cylinder (1st time)");
               cylinderActionTime = millis();
               waitingForCylinder = true;
+              positionMotorStarted = false; // Reset for next cycle
               // noWoodStage will be incremented after waiting
             }
             break;
             
-          case 2: // Move position motor to home
-            positionMotor.moveTo(0);
-            // Serial.println("No-wood sequence: Moving position motor to home");
-            noWoodStage = 2;
-            break;
-            
-          case 3: // Wait for position motor to reach home
+          case 1: // Wait for position motor to reach home (if it hasn't already)
             if (positionMotor.distanceToGo() == 0) {
               // Retract position cylinder
               digitalWrite(POSITION_CLAMP, HIGH);
-              // Serial.println("No-wood sequence: Retracting position cylinder");
+              // Serial.println("No-wood sequence: Position motor at home, retracting position cylinder");
               cylinderActionTime = millis();
               waitingForCylinder = true;
               // noWoodStage will be incremented after waiting
             }
             break;
             
-          case 4: // Move position motor to 2.0 inches
+          case 2: // Move position motor to 2.0 inches
             positionMotor.moveTo(2.0 * POSITION_MOTOR_STEPS_PER_INCH);
             // Serial.println("No-wood sequence: Moving position motor to 2.0 inches");
-            noWoodStage = 5;
+            noWoodStage = 4;
             break;
             
-          case 5: // Wait for position motor to reach 2.0 inches
+          case 3: // Wait for position motor to reach 2.0 inches
             if (positionMotor.distanceToGo() == 0) {
               // Extend position cylinder again (2nd time)
               digitalWrite(POSITION_CLAMP, LOW);
@@ -769,30 +751,13 @@ void performCuttingOperation() {
             }
             break;
             
-          case 6: // Move position motor to home again
-            positionMotor.moveTo(0);
-            // Serial.println("No-wood sequence: Moving position motor to home (2nd time)");
-            noWoodStage = 7;
-            break;
-            
-          case 7: // Wait for position motor to reach home
-            if (positionMotor.distanceToGo() == 0) {
-              // Retract position cylinder
-              digitalWrite(POSITION_CLAMP, HIGH);
-              // Serial.println("No-wood sequence: Retracting position cylinder (2nd time)");
-              cylinderActionTime = millis();
-              waitingForCylinder = true;
-              // noWoodStage will be incremented after waiting
-            }
-            break;
-            
-          case 8: // Move position motor to 3.45 inches final time
+          case 4: // Move position motor to 3.45 inches final time
             positionMotor.moveTo(3.45 * POSITION_MOTOR_STEPS_PER_INCH);
             // Serial.println("No-wood sequence: Moving position motor to 3.45 inches (final)");
-            noWoodStage = 9;
+            noWoodStage = 8;
             break;
             
-          case 9: // Wait for final position and complete sequence
+          case 5: // Wait for final position and complete sequence
             if (positionMotor.distanceToGo() == 0) {
               // Extra sensor check: ensure homing sensor is stably pressed before finalizing the sequence.
               bool sensorStable = true;
@@ -867,6 +832,7 @@ void performPositioningOperation() {
 void performNoWoodOperation() {
   // Special sequence for no-wood mode
   static int noWoodStage = 0;
+  static bool positionMotorStarted = false; // Reset this flag
   
   // Configure motors for return
   cutMotor.setMaxSpeed(CUT_RETURN_SPEED);
@@ -878,6 +844,7 @@ void performNoWoodOperation() {
   // The sequence will be handled in the cuttingStage 6 case in performCuttingOperation
   // Just initialize the first step here
   noWoodStage = 0;
+  positionMotorStarted = false; // Reset the flag
   
   // (Do not transition to READY immediately; wait in stage 6 until sequence completes)
 }
