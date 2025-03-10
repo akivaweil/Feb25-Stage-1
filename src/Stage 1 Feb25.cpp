@@ -1,6 +1,15 @@
 #include <Arduino.h>
 #include <Bounce2.h>
 #include <AccelStepper.h>
+// Add WiFi and OTA libraries
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
+// WiFi credentials
+const char* ssid = "Everwood";
+const char* password = "Everwood-Staff";
 
 // Motor Pin Definitions
 #define CUT_MOTOR_PULSE_PIN 22
@@ -20,14 +29,14 @@
 #define POSITION_CLAMP 13
 #define WOOD_SECURE_CLAMP 15
 
-// LED Pin Definitions
+// LED Pin Definitionss
 #define RED_LED 26   // Error LED
 #define YELLOW_LED 21 // Busy/Reload LED
 #define GREEN_LED 4   // Ready LED
 #define BLUE_LED 2    // Setup/No-Wood LED
 
 // Signal Output
-#define SIGNAL_TO_STAGE_2_PIN 19
+#define SIGNAL_TO_STAGE_1TO2 19
 
 // System States
 enum SystemState {
@@ -60,12 +69,10 @@ const float POSITION_NORMAL_SPEED = 50000;
 const float POSITION_RETURN_SPEED = 50000;
 const float POSITION_ACCELERATION = 50000;
 const float POSITION_HOMING_SPEED = 2000; // Slower speed for homing operations
+const float POSITION_RETURN_ACCELERATION = 50000; // You can adjust this value as needed
 
 // Add a timeout constant for cut motor homing
 const unsigned long CUT_HOME_TIMEOUT = 5000; // 5000 ms (5 seconds) timeout
-
-// Add a new constant for the position motor return acceleration
-const float POSITION_RETURN_ACCELERATION = 50000; // You can adjust this value as needed
 
 // Create motor objects
 AccelStepper cutMotor(AccelStepper::DRIVER, CUT_MOTOR_PULSE_PIN, CUT_MOTOR_DIR_PIN);
@@ -107,6 +114,123 @@ void performPositioningOperation();
 void handleErrorState();
 void resetFromError();
 
+void setupOTA() {
+  // Connect to WiFi with static IP
+  WiFi.mode(WIFI_STA);
+  
+  // Set static IP configuration
+  IPAddress staticIP(192, 168, 1, 223);  // Your desired static IP
+  IPAddress gateway(192, 168, 1, 1);     // Your router's IP (typically)
+  IPAddress subnet(255, 255, 255, 0);    // Subnet mask
+  IPAddress dns(8, 8, 8, 8);             // DNS (Google's public DNS)
+  
+  // Configure static IP
+  if (!WiFi.config(staticIP, gateway, subnet, dns)) {
+    // Failed to configure static IP
+    for (int i = 0; i < 5; i++) {
+      digitalWrite(RED_LED, HIGH);
+      delay(100);
+      digitalWrite(RED_LED, LOW);
+      delay(100);
+    }
+  }
+  
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    // Flash blue LED to indicate WiFi connection attempt
+    digitalWrite(BLUE_LED, HIGH);
+    delay(500);
+    digitalWrite(BLUE_LED, LOW);
+    delay(500);
+    // Serial.println("Connection Failed! Rebooting...");
+    delay(5000);
+    ESP.restart();
+  }
+
+  // Set up OTA
+  ArduinoOTA.setHostname("ESP32-Stage1");
+  
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else {  // U_FS
+      type = "filesystem";
+    }
+    // Serial.println("Start updating " + type);
+    
+    // Turn off all motors and disable outputs for safety during update
+    cutMotor.stop();
+    positionMotor.stop();
+    digitalWrite(POSITION_CLAMP, HIGH);  // Disengage clamps for safety
+    digitalWrite(WOOD_SECURE_CLAMP, HIGH);
+    
+    // Turn on just the blue LED steadily to indicate OTA in progress
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(YELLOW_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, HIGH);
+  });
+  
+  ArduinoOTA.onEnd([]() {
+    // Serial.println("\nEnd");
+    // Single flash of all LEDs to indicate update complete
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(YELLOW_LED, HIGH);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BLUE_LED, HIGH);
+    delay(500);
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(YELLOW_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+  });
+  
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    // Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    // Only update LED at 50% milestone to minimize flashing
+    int percent = progress / (total / 100);
+    static int lastMilestone = 0;
+    
+    // Only light up at 50% to keep it very minimal
+    if (percent >= 50 && lastMilestone < 50) {
+      lastMilestone = 50;
+      digitalWrite(BLUE_LED, LOW);      // Turn off blue
+      digitalWrite(YELLOW_LED, HIGH);   // Turn on just yellow at 50%
+    }
+  });
+  
+  ArduinoOTA.onError([](ota_error_t error) {
+    // Serial.printf("Error[%u]: ", error);
+    // if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    // else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    // else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    // else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    // else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    
+    // Just three slow flashes of red LED to indicate error
+    for (int i = 0; i < 3; i++) {
+      digitalWrite(RED_LED, HIGH);
+      delay(300);
+      digitalWrite(RED_LED, LOW);
+      delay(300);
+    }
+  });
+  
+  ArduinoOTA.begin();
+  // Serial.println("OTA Ready");
+  // Serial.print("IP address: ");
+  // Serial.println(WiFi.localIP());
+
+  if (MDNS.begin("esp32-stage1")) {
+    // Serial.println("mDNS responder started");
+    // Add service to mDNS
+    MDNS.addService("arduino", "tcp", 3232);
+  }
+}
+
 void setup() {
   // Serial.begin(115200);
   // Serial.println("Automated Table Saw Control System - Stage 1");
@@ -125,11 +249,6 @@ void setup() {
   
   // Configure sensor pins - make consistent with explanation
   pinMode(WOOD_SENSOR, INPUT_PULLUP);          // Active LOW (LOW = wood present)
-  
-  // Add additional debug message about sensor configuration
-  // Serial.println("Sensors configured: WOOD_SENSOR on pin " + String(WOOD_SENSOR) + 
-  //              " and WAS_WOOD_SUCTIONED_SENSOR on pin " + String(WAS_WOOD_SUCTIONED_SENSOR));
-  // Serial.println("Both sensors are active LOW - LOW = detected, HIGH = not detected");
   
   // Configure clamp pins - LOW = engaged (extended), HIGH = disengaged (retracted)
   pinMode(POSITION_CLAMP, OUTPUT);
@@ -153,8 +272,8 @@ void setup() {
   digitalWrite(BLUE_LED, HIGH);
   
   // Configure signal output pin
-  pinMode(SIGNAL_TO_STAGE_2_PIN, OUTPUT);
-  digitalWrite(SIGNAL_TO_STAGE_2_PIN, HIGH); // Active LOW signal
+  pinMode(SIGNAL_TO_STAGE_1TO2, OUTPUT);
+  digitalWrite(SIGNAL_TO_STAGE_1TO2, LOW); // Active HIGH signal, initialize to LOW
   
   // Set up debouncing for switches
   cutPositionSwitch.attach(CUT_MOTOR_POSITION_SWITCH);
@@ -180,6 +299,9 @@ void setup() {
   cutMotor.setCurrentPosition(0);
   positionMotor.setCurrentPosition(0);
   
+  // Set up OTA
+  setupOTA();
+  
   // Start in STARTUP state
   currentState = STARTUP;
   
@@ -197,6 +319,9 @@ void setup() {
 }
 
 void loop() {
+  // Handle OTA updates
+  ArduinoOTA.handle();
+  
   // Update all debounced switches
   cutPositionSwitch.update();
   positionPositionSwitch.update();
@@ -476,9 +601,9 @@ void performCuttingOperation() {
   
   // Handle signal timing independently of motor movements
   if (signalActive && millis() - signalStartTime >= 2000) {
-    digitalWrite(SIGNAL_TO_STAGE_2_PIN, HIGH);
+    digitalWrite(SIGNAL_TO_STAGE_1TO2, LOW);
     signalActive = false;
-    // Serial.println("Signal to Stage 2 completed");
+    // Serial.println("Signal to Stage 1TO2 completed");
   }
   
   switch (cuttingStage) {
@@ -520,7 +645,7 @@ void performCuttingOperation() {
     case 2: // Wait for cut to complete
       if (cutMotor.distanceToGo() == 0) {
         // Signal Stage 2 controller - start signal but don't wait
-        digitalWrite(SIGNAL_TO_STAGE_2_PIN, LOW);
+        digitalWrite(SIGNAL_TO_STAGE_1TO2, HIGH);
         signalStartTime = millis();
         signalActive = true;
         signalSent = true;
