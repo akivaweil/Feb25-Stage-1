@@ -46,7 +46,7 @@ SystemState currentState = STARTUP;
 // Motor Configuration
 const int CUT_MOTOR_STEPS_PER_INCH = 76;
 const int POSITION_MOTOR_STEPS_PER_INCH = 1000;
-const float CUT_TRAVEL_DISTANCE = 8; // inches
+const float CUT_TRAVEL_DISTANCE = 7; // inches
 const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
