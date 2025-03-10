@@ -6,6 +6,7 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <esp_now.h>  // Added ESP-NOW header
 
 // WiFi credentials
 const char* ssid = "Everwood";
@@ -34,9 +35,6 @@ const char* password = "Everwood-Staff";
 #define YELLOW_LED 21 // Busy/Reload LED
 #define GREEN_LED 4   // Ready LED
 #define BLUE_LED 2    // Setup/No-Wood LED
-
-// Signal Output
-#define SIGNAL_TO_STAGE_1TO2 19
 
 // System States
 enum SystemState {
@@ -89,7 +87,6 @@ bool isHomed = false;
 bool isReloadMode = false;
 bool woodPresent = false;
 bool woodSuctionError = false;
-bool signalSent = false;
 bool errorAcknowledged = false;
 bool cuttingCycleInProgress = false;
 bool continuousModeActive = false;  // New flag for continuous operation
@@ -104,6 +101,57 @@ unsigned long positionMoveStartTime = 0;
 // LED states
 bool blinkState = false;
 bool errorBlinkState = false;
+
+// --- New ESP-NOW Global Definitions and Functions Start ---
+
+/*
+ * NOTE: Although the peer is labeled as 'stage2PeerAddress' and the function is named
+ * 'sendSignalToStage2', this signal is actually intended for the machine that moves the
+ * wood squares from Stage 1 to Stage 2 (often referred to as the "Stage 1 to Stage 2" machine).
+ * This naming convention is maintained for historical reasons despite the potential confusion.
+ */
+uint8_t stage2PeerAddress[] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC}; // Replace with actual MAC address of Stage 2
+
+typedef struct struct_message {
+  char command[32];
+} struct_message;
+
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("Last Packet Send Status: ");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery success" : "Delivery fail");
+}
+
+void initESPNOW() {
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  esp_now_register_send_cb(OnDataSent);
+  esp_now_peer_info_t peerInfo;
+  memset(&peerInfo, 0, sizeof(peerInfo));
+  memcpy(peerInfo.peer_addr, stage2PeerAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
+}
+
+void sendSignalToStage2(const char* command) {
+  struct_message msg;
+  memset(&msg, 0, sizeof(msg));
+  strncpy(msg.command, command, sizeof(msg.command) - 1);
+  esp_err_t result = esp_now_send(stage2PeerAddress, (uint8_t *)&msg, sizeof(msg));
+  if (result == ESP_OK) {
+    Serial.print("ESP-NOW message sent: ");
+    Serial.println(command);
+  } else {
+    Serial.println("Error sending ESP-NOW message");
+  }
+}
+// --- New ESP-NOW Global Definitions and Functions End ---
 
 // Add these function declarations before the setup() function
 void performHomingSequence();
@@ -301,6 +349,7 @@ void setup() {
   
   // Set up OTA
   setupOTA();
+  initESPNOW();
   
   // Start in STARTUP state
   currentState = STARTUP;
@@ -644,16 +693,13 @@ void performCuttingOperation() {
       
     case 2: // Wait for cut to complete
       if (cutMotor.distanceToGo() == 0) {
-        // Signal Stage 2 controller - start signal but don't wait
-        digitalWrite(SIGNAL_TO_STAGE_1TO2, HIGH);
-        signalStartTime = millis();
-        signalActive = true;
-        signalSent = true;
-        
+        // Send ESP-NOW message to Stage 2 to signal start of cycle (non-blocking)
+        sendSignalToStage2("startCycle");
+
         // Configure motors for return speeds
         cutMotor.setMaxSpeed(CUT_RETURN_SPEED);
         positionMotor.setMaxSpeed(POSITION_NORMAL_SPEED);
-        
+
         // Re-read the wood sensor immediately after cut move finishes
         int sensorValue = digitalRead(WOOD_SENSOR);
         bool noWoodDetected = (sensorValue == HIGH);  // HIGH indicates no wood present
