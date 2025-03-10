@@ -110,7 +110,9 @@ bool errorBlinkState = false;
  * wood squares from Stage 1 to Stage 2 (often referred to as the "Stage 1 to Stage 2" machine).
  * This naming convention is maintained for historical reasons despite the potential confusion.
  */
-uint8_t stage2PeerAddress[] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC}; // Replace with actual MAC address of Stage 2
+// Replace with the actual MAC address of Stage 2 ESP32
+// Use the TEST_MAC_ADDRESS program to find the correct address
+uint8_t stage2PeerAddress[] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC}; 
 
 typedef struct struct_message {
   char command[32];
@@ -318,10 +320,6 @@ void setup() {
   
   // Turn on blue LED during startup
   digitalWrite(BLUE_LED, HIGH);
-  
-  // Configure signal output pin
-  pinMode(SIGNAL_TO_STAGE_1TO2, OUTPUT);
-  digitalWrite(SIGNAL_TO_STAGE_1TO2, LOW); // Active HIGH signal, initialize to LOW
   
   // Set up debouncing for switches
   cutPositionSwitch.attach(CUT_MOTOR_POSITION_SWITCH);
@@ -650,7 +648,6 @@ void performCuttingOperation() {
   
   // Handle signal timing independently of motor movements
   if (signalActive && millis() - signalStartTime >= 2000) {
-    digitalWrite(SIGNAL_TO_STAGE_1TO2, LOW);
     signalActive = false;
     // Serial.println("Signal to Stage 1TO2 completed");
   }
