@@ -1,40 +1,34 @@
 #include <Arduino.h>
 #include <Bounce2.h>
 #include <AccelStepper.h>
-// Add WiFi and OTA libraries
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-#include <esp_now.h>  // Added ESP-NOW header
-
-// WiFi credentials
-const char* ssid = "Everwood";
-const char* password = "Everwood-Staff";
+// Remove WiFi and OTA libraries
 
 // Motor Pin Definitions
-#define CUT_MOTOR_PULSE_PIN 22
-#define CUT_MOTOR_DIR_PIN 23
-#define POSITION_MOTOR_PULSE_PIN 32
-#define POSITION_MOTOR_DIR_PIN 33
+#define CUT_MOTOR_PULSE_PIN 1
+#define CUT_MOTOR_DIR_PIN 2
+#define POSITION_MOTOR_PULSE_PIN 39
+#define POSITION_MOTOR_DIR_PIN 38
 
 // Switch and Sensor Pin Definitions
-#define CUT_MOTOR_POSITION_SWITCH 25
-#define POSITION_MOTOR_POSITION_SWITCH 27
-#define RELOAD_SWITCH 14
-#define START_CYCLE_SWITCH 18
-#define WOOD_SENSOR 35
-#define WAS_WOOD_SUCTIONED_SENSOR 5
+#define CUT_MOTOR_POSITION_SWITCH 9
+#define POSITION_MOTOR_POSITION_SWITCH 10
+#define RELOAD_SWITCH 11
+#define START_CYCLE_SWITCH 12
+#define WOOD_SENSOR 13
+#define WAS_WOOD_SUCTIONED_SENSOR 14
 
 // Clamp Pin Definitions
-#define POSITION_CLAMP 13
-#define WOOD_SECURE_CLAMP 15
+#define POSITION_CLAMP 4
+#define WOOD_SECURE_CLAMP 5
+
+// Add signal pin definition
+#define STAGE2_SIGNAL_OUT_PIN 3  // Using pin 3 for direct signaling to Stage 1 to Stage 2 machine
 
 // LED Pin Definitionss
-#define RED_LED 26   // Error LED
-#define YELLOW_LED 21 // Busy/Reload LED
-#define GREEN_LED 4   // Ready LED
-#define BLUE_LED 2    // Setup/No-Wood LED
+#define RED_LED 6   // Error LED
+#define YELLOW_LED 7 // Busy/Reload LED
+#define GREEN_LED 15   // Ready LED
+#define BLUE_LED 16    // Setup/No-Wood LED
 
 // System States
 enum SystemState {
@@ -102,58 +96,18 @@ unsigned long positionMoveStartTime = 0;
 bool blinkState = false;
 bool errorBlinkState = false;
 
-// --- New ESP-NOW Global Definitions and Functions Start ---
+// Global variables for signal handling
+unsigned long signalStage2StartTime = 0;
+bool signalStage2Active = false;
+const unsigned long STAGE2_SIGNAL_DURATION = 2000; // 2 seconds signal duration
 
-/*
- * NOTE: Although the peer is labeled as 'stage2PeerAddress' and the function is named
- * 'sendSignalToStage2', this signal is actually intended for the machine that moves the
- * wood squares from Stage 1 to Stage 2 (often referred to as the "Stage 1 to Stage 2" machine).
- * This naming convention is maintained for historical reasons despite the potential confusion.
- */
-// Replace with the actual MAC address of Stage 2 ESP32
-// Use the TEST_MAC_ADDRESS program to find the correct address
-uint8_t stage2PeerAddress[] = {0x24, 0x6F, 0x28, 0xAA, 0xBB, 0xCC}; 
-
-typedef struct struct_message {
-  char command[32];
-} struct_message;
-
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("Last Packet Send Status: ");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery success" : "Delivery fail");
+void sendSignalToStage2() {
+  // Set the signal pin HIGH to trigger Stage 1 to Stage 2 machine
+  digitalWrite(STAGE2_SIGNAL_OUT_PIN, HIGH);
+  signalStage2StartTime = millis();
+  signalStage2Active = true;
+  Serial.println("Signal sent to Stage 1 to Stage 2 machine");
 }
-
-void initESPNOW() {
-  WiFi.mode(WIFI_STA);
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  }
-  esp_now_register_send_cb(OnDataSent);
-  esp_now_peer_info_t peerInfo;
-  memset(&peerInfo, 0, sizeof(peerInfo));
-  memcpy(peerInfo.peer_addr, stage2PeerAddress, 6);
-  peerInfo.channel = 0;
-  peerInfo.encrypt = false;
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("Failed to add peer");
-    return;
-  }
-}
-
-void sendSignalToStage2(const char* command) {
-  struct_message msg;
-  memset(&msg, 0, sizeof(msg));
-  strncpy(msg.command, command, sizeof(msg.command) - 1);
-  esp_err_t result = esp_now_send(stage2PeerAddress, (uint8_t *)&msg, sizeof(msg));
-  if (result == ESP_OK) {
-    Serial.print("ESP-NOW message sent: ");
-    Serial.println(command);
-  } else {
-    Serial.println("Error sending ESP-NOW message");
-  }
-}
-// --- New ESP-NOW Global Definitions and Functions End ---
 
 // Add these function declarations before the setup() function
 void performHomingSequence();
@@ -163,123 +117,6 @@ void performReturnOperation();
 void performPositioningOperation();
 void handleErrorState();
 void resetFromError();
-
-void setupOTA() {
-  // Connect to WiFi with static IP
-  WiFi.mode(WIFI_STA);
-  
-  // Set static IP configuration
-  IPAddress staticIP(192, 168, 1, 223);  // Your desired static IP
-  IPAddress gateway(192, 168, 1, 1);     // Your router's IP (typically)
-  IPAddress subnet(255, 255, 255, 0);    // Subnet mask
-  IPAddress dns(8, 8, 8, 8);             // DNS (Google's public DNS)
-  
-  // Configure static IP
-  if (!WiFi.config(staticIP, gateway, subnet, dns)) {
-    // Failed to configure static IP
-    for (int i = 0; i < 5; i++) {
-      digitalWrite(RED_LED, HIGH);
-      delay(100);
-      digitalWrite(RED_LED, LOW);
-      delay(100);
-    }
-  }
-  
-  // Connect to WiFi
-  WiFi.begin(ssid, password);
-  
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    // Flash blue LED to indicate WiFi connection attempt
-    digitalWrite(BLUE_LED, HIGH);
-    delay(500);
-    digitalWrite(BLUE_LED, LOW);
-    delay(500);
-    // Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
-
-  // Set up OTA
-  ArduinoOTA.setHostname("ESP32-Stage1");
-  
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else {  // U_FS
-      type = "filesystem";
-    }
-    // Serial.println("Start updating " + type);
-    
-    // Turn off all motors and disable outputs for safety during update
-    cutMotor.stop();
-    positionMotor.stop();
-    digitalWrite(POSITION_CLAMP, HIGH);  // Disengage clamps for safety
-    digitalWrite(WOOD_SECURE_CLAMP, HIGH);
-    
-    // Turn on just the blue LED steadily to indicate OTA in progress
-    digitalWrite(RED_LED, LOW);
-    digitalWrite(YELLOW_LED, LOW);
-    digitalWrite(GREEN_LED, LOW);
-    digitalWrite(BLUE_LED, HIGH);
-  });
-  
-  ArduinoOTA.onEnd([]() {
-    // Serial.println("\nEnd");
-    // Single flash of all LEDs to indicate update complete
-    digitalWrite(RED_LED, HIGH);
-    digitalWrite(YELLOW_LED, HIGH);
-    digitalWrite(GREEN_LED, HIGH);
-    digitalWrite(BLUE_LED, HIGH);
-    delay(500);
-    digitalWrite(RED_LED, LOW);
-    digitalWrite(YELLOW_LED, LOW);
-    digitalWrite(GREEN_LED, LOW);
-    digitalWrite(BLUE_LED, LOW);
-  });
-  
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    // Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    // Only update LED at 50% milestone to minimize flashing
-    int percent = progress / (total / 100);
-    static int lastMilestone = 0;
-    
-    // Only light up at 50% to keep it very minimal
-    if (percent >= 50 && lastMilestone < 50) {
-      lastMilestone = 50;
-      digitalWrite(BLUE_LED, LOW);      // Turn off blue
-      digitalWrite(YELLOW_LED, HIGH);   // Turn on just yellow at 50%
-    }
-  });
-  
-  ArduinoOTA.onError([](ota_error_t error) {
-    // Serial.printf("Error[%u]: ", error);
-    // if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    // else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    // else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    // else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    // else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    
-    // Just three slow flashes of red LED to indicate error
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(RED_LED, HIGH);
-      delay(300);
-      digitalWrite(RED_LED, LOW);
-      delay(300);
-    }
-  });
-  
-  ArduinoOTA.begin();
-  // Serial.println("OTA Ready");
-  // Serial.print("IP address: ");
-  // Serial.println(WiFi.localIP());
-
-  if (MDNS.begin("esp32-stage1")) {
-    // Serial.println("mDNS responder started");
-    // Add service to mDNS
-    MDNS.addService("arduino", "tcp", 3232);
-  }
-}
 
 void setup() {
   // Serial.begin(115200);
@@ -345,9 +182,9 @@ void setup() {
   cutMotor.setCurrentPosition(0);
   positionMotor.setCurrentPosition(0);
   
-  // Set up OTA
-  setupOTA();
-  initESPNOW();
+  // Initialize signal pin
+  pinMode(STAGE2_SIGNAL_OUT_PIN, OUTPUT);
+  digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW); // Start with signal inactive
   
   // Start in STARTUP state
   currentState = STARTUP;
@@ -366,9 +203,6 @@ void setup() {
 }
 
 void loop() {
-  // Handle OTA updates
-  ArduinoOTA.handle();
-  
   // Update all debounced switches
   cutPositionSwitch.update();
   positionPositionSwitch.update();
@@ -422,6 +256,13 @@ void loop() {
     } else {
       // Serial.println("Continuous operation mode deactivated");
     }
+  }
+  
+  // Handle signal timing independently of other operations
+  if (signalStage2Active && millis() - signalStage2StartTime >= STAGE2_SIGNAL_DURATION) {
+    digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW);
+    signalStage2Active = false;
+    Serial.println("Signal to Stage 1 to Stage 2 completed");
   }
   
   // State machine
@@ -690,8 +531,8 @@ void performCuttingOperation() {
       
     case 2: // Wait for cut to complete
       if (cutMotor.distanceToGo() == 0) {
-        // Send ESP-NOW message to Stage 2 to signal start of cycle (non-blocking)
-        sendSignalToStage2("startCycle");
+        // Send signal to Stage 1 to Stage 2 machine via GPIO pin (non-blocking)
+        sendSignalToStage2();
 
         // Configure motors for return speeds
         cutMotor.setMaxSpeed(CUT_RETURN_SPEED);
