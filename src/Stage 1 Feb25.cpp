@@ -1,48 +1,33 @@
 #include <Arduino.h>
 #include <Bounce2.h>
 #include <AccelStepper.h>
-// Add WiFi and OTA libraries
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
-
-// WiFi credentials
-const char* ssid = "Everwood";
-const char* password = "Everwood-Staff";
-// OTA settings
-const char* otaPassword = "esp32admin";  // OTA password for security
-
-// Static IP configuration
-IPAddress staticIP(192, 168, 1, 223);   // Static IP for Stage 1 controller
-IPAddress gateway(192, 168, 1, 1);      // Gateway IP (router)
-IPAddress subnet(255, 255, 255, 0);     // Subnet mask
-IPAddress dns(8, 8, 8, 8);              // DNS server
+#include <esp_system.h> // Include for ESP.restart()
+// Remove WiFi and OTA libraries
 
 // Motor Pin Definitions
-#define CUT_MOTOR_PULSE_PIN 1
-#define CUT_MOTOR_DIR_PIN 2
-#define POSITION_MOTOR_PULSE_PIN 39
-#define POSITION_MOTOR_DIR_PIN 38
+#define CUT_MOTOR_PULSE_PIN 48
+#define CUT_MOTOR_DIR_PIN 47
+#define POSITION_MOTOR_PULSE_PIN 21
+#define POSITION_MOTOR_DIR_PIN 20
 
 // Switch and Sensor Pin Definitions
-#define CUT_MOTOR_POSITION_SWITCH 9
-#define POSITION_MOTOR_POSITION_SWITCH 10
-#define RELOAD_SWITCH 11
-#define START_CYCLE_SWITCH 12
-#define WOOD_SENSOR 13
-#define WAS_WOOD_SUCTIONED_SENSOR 14
+#define CUT_MOTOR_POSITION_SWITCH 10
+#define POSITION_MOTOR_POSITION_SWITCH 9
+#define RELOAD_SWITCH 14
+#define START_CYCLE_SWITCH 13
+#define WOOD_SENSOR 11
+#define WAS_WOOD_SUCTIONED_SENSOR 8
 
 // Clamp Pin Definitions
-#define POSITION_CLAMP 4
-#define WOOD_SECURE_CLAMP 5
+#define POSITION_CLAMP 18
+#define WOOD_SECURE_CLAMP 17
 
 // Add signal pin definition
-#define STAGE2_SIGNAL_OUT_PIN 3  // Using pin 3 for direct signaling to Stage 1 to Stage 2 machine
+#define STAGE2_SIGNAL_OUT_PIN 19  // Using pin 19 for direct signaling to Stage 1 to Stage 2 machine
 
 // LED Pin Definitionss
-#define RED_LED 6   // Error LED
-#define YELLOW_LED 7 // Busy/Reload LED
+#define RED_LED 7  // Error LED
+#define YELLOW_LED 6 // Busy/Reload LED
 #define GREEN_LED 15   // Ready LED
 #define BLUE_LED 16    // Setup/No-Wood LED
 
@@ -63,21 +48,21 @@ SystemState currentState = STARTUP;
 // Motor Configuration
 const int CUT_MOTOR_STEPS_PER_INCH = 76;
 const int POSITION_MOTOR_STEPS_PER_INCH = 1000;
-const float CUT_TRAVEL_DISTANCE = 7.7; // inches
+const float CUT_TRAVEL_DISTANCE = 7.5; // inches
 const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
 
 // Speed and Acceleration Settings
-const float CUT_NORMAL_SPEED = 400;
-const float CUT_RETURN_SPEED = 2000;
-const float CUT_ACCELERATION = 2500;
+const float CUT_NORMAL_SPEED = 105;
+const float CUT_RETURN_SPEED = 1500;
+const float CUT_ACCELERATION = 3200;
 const float CUT_HOMING_SPEED = 300;
-const float POSITION_NORMAL_SPEED = 3000;
-const float POSITION_RETURN_SPEED = 3000;
-const float POSITION_ACCELERATION = 3000;
-const float POSITION_HOMING_SPEED = 300; // Slower speed for homing operations
-const float POSITION_RETURN_ACCELERATION = 3000; // You can adjust this value as needed
+const float POSITION_NORMAL_SPEED = 30000;
+const float POSITION_RETURN_SPEED = 30000;
+const float POSITION_ACCELERATION = 30000;
+const float POSITION_HOMING_SPEED = 2000; // Slower speed for homing operations
+const float POSITION_RETURN_ACCELERATION = 30000; // You can adjust this value as needed
 
 // Add a timeout constant for cut motor homing
 const unsigned long CUT_HOME_TIMEOUT = 5000; // 5000 ms (5 seconds) timeout
@@ -97,16 +82,10 @@ bool isHomed = false;
 bool isReloadMode = false;
 bool woodPresent = false;
 bool woodSuctionError = false;
-bool signalSent = false;
 bool errorAcknowledged = false;
 bool cuttingCycleInProgress = false;
 bool continuousModeActive = false;  // New flag for continuous operation
 bool startSwitchSafe = false;       // New flag to track if start switch is safe
-
-// OTA status tracking
-bool otaInProgress = false;
-unsigned long otaStartTime = 0;
-const unsigned long OTA_TIMEOUT = 300000; // 5 minutes timeout for OTA
 
 // Timers for various operations
 unsigned long lastBlinkTime = 0;
@@ -121,21 +100,14 @@ bool errorBlinkState = false;
 // Global variables for signal handling
 unsigned long signalStage2StartTime = 0;
 bool signalStage2Active = false;
-const unsigned long STAGE2_SIGNAL_DURATION = 2000; // 2 seconds signal duration
+const unsigned long STAGE2_SIGNAL_DURATION = 150; // 150 milliseconds signal duration
 
 void sendSignalToStage2() {
-  static unsigned long signalStartTime = 0;
-  static bool signalActive = false;
-  
-  if (!signalSent) {
-    digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW);  // Active LOW signal
-    signalActive = true;
-    signalStartTime = millis();
-    signalSent = true;
-  } else if (signalActive && millis() - signalStartTime >= 2000) {
-    digitalWrite(STAGE2_SIGNAL_OUT_PIN, HIGH);  // Deactivate signal
-    signalActive = false;
-  }
+  // Set the signal pin HIGH to trigger Stage 1 to Stage 2 machine (active HIGH)
+  digitalWrite(STAGE2_SIGNAL_OUT_PIN, HIGH);
+  signalStage2StartTime = millis();
+  signalStage2Active = true;
+  Serial.println("Signal sent to Stage 1 to Stage 2 machine");
 }
 
 // Add these function declarations before the setup() function
@@ -146,152 +118,6 @@ void performReturnOperation();
 void performPositioningOperation();
 void handleErrorState();
 void resetFromError();
-
-void setupOTA() {
-  // Connect to WiFi with static IP
-  WiFi.mode(WIFI_STA);
-  
-  // Set static IP configuration
-  if (!WiFi.config(staticIP, gateway, subnet, dns)) {
-    // Failed to configure static IP
-    for (int i = 0; i < 5; i++) {
-      digitalWrite(RED_LED, HIGH);
-      delay(100);
-      digitalWrite(RED_LED, LOW);
-      delay(100);
-    }
-  }
-  
-  // Connect to WiFi
-  WiFi.begin(ssid, password);
-  
-  // Set hostname
-  WiFi.setHostname("ESP32-Stage1");
-  
-  // Wait for connection with visual feedback
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
-    // Flash blue LED to indicate WiFi connection attempt
-    digitalWrite(BLUE_LED, HIGH);
-    delay(250);
-    digitalWrite(BLUE_LED, LOW);
-    delay(250);
-  }
-  
-  // If connection failed after timeout, proceed without WiFi
-  if (WiFi.status() != WL_CONNECTED) {
-    // Flash red LED to indicate WiFi connection failure
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(RED_LED, HIGH);
-      delay(200);
-      digitalWrite(RED_LED, LOW);
-      delay(200);
-    }
-    return; // Exit setupOTA without setting up OTA
-  }
-
-  // Set up OTA
-  ArduinoOTA.setHostname("ESP32-Stage1");
-  
-  // Set password for authentication
-  ArduinoOTA.setPassword(otaPassword);
-  
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else {  // U_FS
-      type = "filesystem";
-    }
-    // Serial.println("Start updating " + type);
-    
-    // Set OTA flag and start time
-    otaInProgress = true;
-    otaStartTime = millis();
-    
-    // Turn off all motors and disable outputs for safety during update
-    cutMotor.stop();
-    positionMotor.stop();
-    digitalWrite(POSITION_CLAMP, HIGH);  // Disengage clamps for safety
-    digitalWrite(WOOD_SECURE_CLAMP, HIGH);
-    
-    // Turn on just the blue LED steadily to indicate OTA in progress
-    digitalWrite(RED_LED, LOW);
-    digitalWrite(YELLOW_LED, LOW);
-    digitalWrite(GREEN_LED, LOW);
-    digitalWrite(BLUE_LED, HIGH);
-  });
-  
-  ArduinoOTA.onEnd([]() {
-    // Serial.println("\nEnd");
-    otaInProgress = false;
-    
-    // Single flash of all LEDs to indicate update complete
-    digitalWrite(RED_LED, HIGH);
-    digitalWrite(YELLOW_LED, HIGH);
-    digitalWrite(GREEN_LED, HIGH);
-    digitalWrite(BLUE_LED, HIGH);
-    delay(500);
-    digitalWrite(RED_LED, LOW);
-    digitalWrite(YELLOW_LED, LOW);
-    digitalWrite(GREEN_LED, LOW);
-    digitalWrite(BLUE_LED, LOW);
-  });
-  
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    // Reset timeout during progress
-    otaStartTime = millis();
-    
-    // Calculate percentage for LED progress indication
-    int percent = progress / (total / 100);
-    static int lastMilestone = 0;
-    
-    // Only light up at specific milestones to keep visual feedback minimal
-    if (percent >= 75 && lastMilestone < 75) {
-      lastMilestone = 75;
-      digitalWrite(BLUE_LED, LOW);
-      digitalWrite(GREEN_LED, HIGH);  // Green at 75%
-    }
-    else if (percent >= 50 && lastMilestone < 50) {
-      lastMilestone = 50;
-      digitalWrite(BLUE_LED, LOW);      
-      digitalWrite(YELLOW_LED, HIGH);   // Yellow at 50%
-    }
-    else if (percent >= 25 && lastMilestone < 25) {
-      lastMilestone = 25;
-      digitalWrite(BLUE_LED, LOW);
-      digitalWrite(RED_LED, HIGH);     // Red at 25%
-    }
-  });
-  
-  ArduinoOTA.onError([](ota_error_t error) {
-    otaInProgress = false;
-    
-    // Three slow flashes of red LED to indicate error
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(RED_LED, HIGH);
-      delay(300);
-      digitalWrite(RED_LED, LOW);
-      delay(300);
-    }
-  });
-  
-  ArduinoOTA.begin();
-
-  if (MDNS.begin("esp32-stage1")) {
-    // Add service to mDNS
-    MDNS.addService("arduino", "tcp", 3232);
-  }
-  
-  // Confirm OTA is ready with LED flash sequence
-  digitalWrite(GREEN_LED, HIGH);
-  delay(200);
-  digitalWrite(GREEN_LED, LOW);
-  delay(200);
-  digitalWrite(GREEN_LED, HIGH);
-  delay(200);
-  digitalWrite(GREEN_LED, LOW);
-}
 
 void setup() {
   Serial.begin(115200);
@@ -307,12 +133,12 @@ void setup() {
   pinMode(CUT_MOTOR_POSITION_SWITCH, INPUT_PULLUP);       // Homing switch
   pinMode(POSITION_MOTOR_POSITION_SWITCH, INPUT_PULLUP);  // Homing switch
   pinMode(RELOAD_SWITCH, INPUT_PULLUP);                   // Manual switch without pull-down
-  pinMode(START_CYCLE_SWITCH, INPUT_PULLUP);             // Manual switch without pull-down
+  pinMode(START_CYCLE_SWITCH, INPUT_PULLUP);              // Manual switch without pull-down
   
   // Configure sensor pins - make consistent with explanation
   pinMode(WOOD_SENSOR, INPUT_PULLUP);          // Active LOW (LOW = wood present)
   pinMode(WAS_WOOD_SUCTIONED_SENSOR, INPUT_PULLUP);          // Active LOW (LOW = wood present)
-
+  
   // Configure clamp pins - LOW = engaged (extended), HIGH = disengaged (retracted)
   pinMode(POSITION_CLAMP, OUTPUT);
   pinMode(WOOD_SECURE_CLAMP, OUTPUT);
@@ -333,10 +159,6 @@ void setup() {
   
   // Turn on blue LED during startup
   digitalWrite(BLUE_LED, HIGH);
-  
-  // Initialize signal pin
-  pinMode(STAGE2_SIGNAL_OUT_PIN, OUTPUT);
-  digitalWrite(STAGE2_SIGNAL_OUT_PIN, HIGH); // Active LOW signal, initialize to HIGH
   
   // Set up debouncing for switches
   cutPositionSwitch.attach(CUT_MOTOR_POSITION_SWITCH);
@@ -362,62 +184,27 @@ void setup() {
   cutMotor.setCurrentPosition(0);
   positionMotor.setCurrentPosition(0);
   
-  // Set up OTA - moved this to the end of setup for better stability
-  setupOTA();
+  // Initialize signal pin
+  pinMode(STAGE2_SIGNAL_OUT_PIN, OUTPUT);
+  digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW); // Start with signal inactive (LOW)
   
   // Start in STARTUP state
   currentState = STARTUP;
   
   // Check if start switch is already ON at startup
   startCycleSwitch.update();
-  if (startCycleSwitch.read() == LOW) {  // Active LOW (LOW = switch pressed)
+  if (startCycleSwitch.read() == HIGH) {
     startSwitchSafe = false;
-    Serial.println("WARNING: Start switch is ON during startup. Turn it OFF before operation.");
+    // Serial.println("WARNING: Start switch is ON during startup. Turn it OFF before operation.");
   } else {
     startSwitchSafe = true;
   }
   
-  // Turn off blue LED and turn on yellow LED to indicate entering homing sequence
-  digitalWrite(BLUE_LED, LOW);
-  digitalWrite(YELLOW_LED, HIGH);
-  
-  Serial.println("System initialized, ready to begin homing sequence");
+  // Serial.println("System initialized, ready to begin homing sequence");
   delay(10);  // Brief delay before starting homing
 }
 
 void loop() {
-  // Handle OTA updates first - highest priority task
-  if (WiFi.status() == WL_CONNECTED) {
-    ArduinoOTA.handle();
-    
-    // Handle OTA timeout
-    if (otaInProgress && (millis() - otaStartTime > OTA_TIMEOUT)) {
-      // OTA timed out, restart device
-      otaInProgress = false;
-      
-      // Flash all LEDs to indicate timeout
-      for (int i = 0; i < 3; i++) {
-        digitalWrite(RED_LED, HIGH);
-        digitalWrite(YELLOW_LED, HIGH);
-        digitalWrite(GREEN_LED, HIGH);
-        digitalWrite(BLUE_LED, HIGH);
-        delay(200);
-        digitalWrite(RED_LED, LOW);
-        digitalWrite(YELLOW_LED, LOW);
-        digitalWrite(GREEN_LED, LOW);
-        digitalWrite(BLUE_LED, LOW);
-        delay(200);
-      }
-      
-      ESP.restart(); // Restart to recover from OTA failure
-    }
-  }
-  
-  // Skip normal operation if OTA is in progress
-  if (otaInProgress) {
-    return;
-  }
-  
   // Update all debounced switches
   cutPositionSwitch.update();
   positionPositionSwitch.update();
@@ -427,17 +214,17 @@ void loop() {
   // Read wood sensor (active LOW per explanation)
   woodPresent = (digitalRead(WOOD_SENSOR) == LOW);
   
-  // Handle start switch safety check - switches are active LOW
-  if (!startSwitchSafe && startCycleSwitch.rose()) {  // Changed from fell() to rose() for active LOW
+  // Handle start switch safety check
+  if (!startSwitchSafe && startCycleSwitch.fell()) {
     // Start switch was turned OFF after being ON during startup
     startSwitchSafe = true;
-    Serial.println("Start switch is now safe to use");
+    // Serial.println("Start switch is now safe to use");
   }
   
-  // Handle the reload switch state when in READY state - switches are active LOW
+  // Handle the reload switch state when in READY state
   if (currentState == READY) {
-    // Check current state of reload switch (LOW = ON with pull-up resistor)
-    bool reloadSwitchOn = reloadSwitch.read() == LOW;  // Changed from HIGH to LOW for active LOW
+    // Check current state of reload switch (HIGH = ON with pull-down resistor)
+    bool reloadSwitchOn = reloadSwitch.read() == HIGH;
     
     if (reloadSwitchOn && !isReloadMode) {
       // Enter reload mode
@@ -445,39 +232,45 @@ void loop() {
       digitalWrite(POSITION_CLAMP, HIGH); // Disengage position clamp
       digitalWrite(WOOD_SECURE_CLAMP, HIGH); // Disengage wood secure clamp
       digitalWrite(YELLOW_LED, HIGH);     // Turn on yellow LED for reload mode
-      Serial.println("Entered reload mode");
+      // Serial.println("Entered reload mode");
     } else if (!reloadSwitchOn && isReloadMode) {
       // Exit reload mode
       isReloadMode = false;
       digitalWrite(POSITION_CLAMP, LOW);   // Re-engage position clamp
       digitalWrite(WOOD_SECURE_CLAMP, LOW); // Re-engage wood secure clamp
       digitalWrite(YELLOW_LED, LOW);       // Turn off yellow LED
-      Serial.println("Exited reload mode, ready for operation");
+      // Serial.println("Exited reload mode, ready for operation");
     }
   }
   
-  // Handle error acknowledgment separately - switches are active LOW
-  if (reloadSwitch.fell() && currentState == ERROR) {  // Changed from rose() to fell() for active LOW
+  // Handle error acknowledgment separately
+  if (reloadSwitch.rose() && currentState == ERROR) {
     currentState = ERROR_RESET;
     errorAcknowledged = true;
   }
   
   // Check for continuous mode activation/deactivation - modified to include safety check
-  // Switches are active LOW
-  bool startSwitchOn = startCycleSwitch.read() == LOW;  // Changed from HIGH to LOW for active LOW
+  bool startSwitchOn = startCycleSwitch.read() == HIGH;
   if (startSwitchOn != continuousModeActive && startSwitchSafe) {
     continuousModeActive = startSwitchOn;
     if (continuousModeActive) {
-      Serial.println("Continuous operation mode activated");
+      // Serial.println("Continuous operation mode activated");
     } else {
-      Serial.println("Continuous operation mode deactivated");
+      // Serial.println("Continuous operation mode deactivated");
     }
+  }
+  
+  // Handle signal timing independently of other operations
+  if (signalStage2Active && millis() - signalStage2StartTime >= STAGE2_SIGNAL_DURATION) {
+    digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW); // Return to inactive state (LOW)
+    signalStage2Active = false;
+    Serial.println("Signal to Stage 1 to Stage 2 completed");
   }
   
   // State machine
   switch (currentState) {
     case STARTUP:
-      Serial.println("Starting homing sequence...");
+      // Serial.println("Starting homing sequence...");
       digitalWrite(BLUE_LED, HIGH);  // Blue LED on during startup/homing
       currentState = HOMING;
       break;
@@ -493,12 +286,12 @@ void loop() {
         digitalWrite(GREEN_LED, HIGH);
         
         // Start a new cycle if:
-        // 1. Start switch was just flipped ON (falling edge for active LOW), OR
+        // 1. Start switch was just flipped ON (rising edge), OR
         // 2. Continuous mode is active AND we're not already in a cutting cycle
         // AND the start switch is safe to use
-        if (((startCycleSwitch.fell() || (continuousModeActive && !cuttingCycleInProgress)) 
+        if (((startCycleSwitch.rose() || (continuousModeActive && !cuttingCycleInProgress)) 
             && !woodSuctionError) && startSwitchSafe) {
-          Serial.println("Starting cutting cycle");
+          // Serial.println("Starting cutting cycle");
           // Turn off ready LED, turn on busy LED
           digitalWrite(GREEN_LED, LOW);
           digitalWrite(YELLOW_LED, HIGH);
@@ -507,13 +300,10 @@ void loop() {
           // Set flag to indicate cycle in progress
           cuttingCycleInProgress = true;
           
-          // Reset signal sent flag
-          signalSent = false;
-          
           // Always enter cutting state, regardless of wood presence
           currentState = CUTTING;
-          // Configure cut motor for cutting speed
-          cutMotor.setMaxSpeed(CUT_NORMAL_SPEED);
+          // Configure cut motor for cutting speed - change back to normal speed
+          cutMotor.setMaxSpeed(CUT_NORMAL_SPEED);  // Change from 2000 back to CUT_NORMAL_SPEED (100)
           cutMotor.setAcceleration(CUT_ACCELERATION);
           // Ensure clamps are engaged
           digitalWrite(POSITION_CLAMP, LOW);
@@ -521,7 +311,7 @@ void loop() {
           
           // Store wood presence for later use
           if (!woodPresent) {
-            Serial.println("No wood detected, will enter no-wood mode after cut");
+            // Serial.println("No wood detected, will enter no-wood mode after cut");
             digitalWrite(BLUE_LED, HIGH); // Blue LED on for no-wood mode
           }
         }
@@ -733,10 +523,10 @@ void performCuttingOperation() {
             delay(150);  // Increased from 100ms to 150ms (50% longer)
           }
           
-          ESP.restart(); // Hardware reset of ESP32 as per instructions
+          esp_restart(); // Hardware reset of ESP32
         }
         
-        // If we passed the check, move to the next stage
+        // Move to the next stage regardless - we only check once at 1 inch
         cuttingStage = 2;
       }
       break;
@@ -744,6 +534,7 @@ void performCuttingOperation() {
     case 2: // Wait for cut to complete
       if (cutMotor.distanceToGo() == 0) {
         // Send signal to Stage 1 to Stage 2 machine via GPIO pin (non-blocking)
+        Serial.println("Cut motion complete, sending signal to Stage 2");
         sendSignalToStage2();
 
         // Configure motors for return speeds
