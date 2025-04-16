@@ -46,23 +46,23 @@ enum SystemState {
 SystemState currentState = STARTUP;
 
 // Motor Configuration
-const int CUT_MOTOR_STEPS_PER_INCH = 38;  // Halved from 76 due to 80-tooth pulley
-const int POSITION_MOTOR_STEPS_PER_INCH = 1000;
-const float CUT_TRAVEL_DISTANCE = 7; // inches
+const int CUT_MOTOR_STEPS_PER_INCH = 152;  // 4x increase from 38
+const int POSITION_MOTOR_STEPS_PER_INCH = 1000; // Restored to original value
+const float CUT_TRAVEL_DISTANCE = 7.35; // inches
 const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
 
 // Speed and Acceleration Settings
-const float CUT_NORMAL_SPEED = 45;  // Halved from 90
-const float CUT_RETURN_SPEED = 750;  // Halved from 1500
-const float CUT_ACCELERATION = 1000;  // Halved from 2000
-const float CUT_HOMING_SPEED = 150;  // Halved from 300
-const float POSITION_NORMAL_SPEED = 30000;
-const float POSITION_RETURN_SPEED = 30000;
-const float POSITION_ACCELERATION = 30000;
-const float POSITION_HOMING_SPEED = 2000; // Slower speed for homing operations
-const float POSITION_RETURN_ACCELERATION = 30000; // You can adjust this value as needed
+const float CUT_NORMAL_SPEED = 180;  // 4x increase from 35
+const float CUT_RETURN_SPEED = 3000;  // 4x increase from 750
+const float CUT_ACCELERATION = 4000;  // 4x increase from 1000
+const float CUT_HOMING_SPEED = 600;  // 4x increase from 150
+const float POSITION_NORMAL_SPEED = 30000; // Restored to original value
+const float POSITION_RETURN_SPEED = 30000; // Restored to original value
+const float POSITION_ACCELERATION = 30000; // Restored to original value
+const float POSITION_HOMING_SPEED = 2000; // Restored to original value
+const float POSITION_RETURN_ACCELERATION = 30000; // Restored to original value
 
 // Add a timeout constant for cut motor homing
 const unsigned long CUT_HOME_TIMEOUT = 5000; // 5000 ms (5 seconds) timeout
@@ -176,11 +176,11 @@ void setup() {
   // Configure motors
   cutMotor.setMaxSpeed(CUT_NORMAL_SPEED);
   cutMotor.setAcceleration(CUT_ACCELERATION);
-  cutMotor.setMinPulseWidth(10);  // Set minimum pulse width to 3 microseconds
+  cutMotor.setMinPulseWidth(30);  // Increased from 10 to recommended 30 microseconds
   
   positionMotor.setMaxSpeed(POSITION_NORMAL_SPEED);
   positionMotor.setAcceleration(POSITION_ACCELERATION);
-  positionMotor.setMinPulseWidth(10);  // Set minimum pulse width to 3 microseconds
+  positionMotor.setMinPulseWidth(30);  // Increased from 10 to recommended 30 microseconds
   
   // Initially set motors to use position 0
   cutMotor.setCurrentPosition(0);
@@ -364,16 +364,16 @@ void performHomingSequence() {
     // If the cut motor position switch is already active, move away first
     if (cutPositionSwitch.read() == HIGH) {
       cutMotor.setMaxSpeed(CUT_HOMING_SPEED);
-      cutMotor.moveTo(10); // Move slightly away from switch
+      cutMotor.moveTo(40); // 4x increase from 10
       if (cutMotor.distanceToGo() == 0) {
         // Now move back to find the switch
         cutMotor.setSpeed(CUT_HOMING_SPEED * CUT_HOMING_DIRECTION);
-        cutMotor.moveTo(-10000); // Move toward switch (will stop when switch activated)
+        cutMotor.moveTo(-40000); // 4x increase from -10000
       }
     } else {
       // Move toward home switch
       cutMotor.setSpeed(CUT_HOMING_SPEED * CUT_HOMING_DIRECTION);
-      cutMotor.moveTo(-10000); // Large number in homing direction
+      cutMotor.moveTo(-40000); // 4x increase from -10000
     }
     
     // Check if we hit the switch
@@ -390,16 +390,16 @@ void performHomingSequence() {
     // If the position motor switch is already active, move away first
     if (positionPositionSwitch.read() == HIGH) {
       positionMotor.setMaxSpeed(POSITION_NORMAL_SPEED);
-      positionMotor.moveTo(100 * POSITION_MOTOR_STEPS_PER_INCH); // Move slightly away
+      positionMotor.moveTo(100 * POSITION_MOTOR_STEPS_PER_INCH); // Restored to original value
       if (positionMotor.distanceToGo() == 0) {
         // Now move back to find the switch
         positionMotor.setSpeed(POSITION_HOMING_SPEED * POSITION_HOMING_DIRECTION);
-        positionMotor.moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); // Move toward switch
+        positionMotor.moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); // Restored to original value
       }
     } else {
       // Move toward home switch
       positionMotor.setSpeed(POSITION_HOMING_SPEED * POSITION_HOMING_DIRECTION);
-      positionMotor.moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH);
+      positionMotor.moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); // Restored to original value
     }
     
     // Check if we hit the switch
