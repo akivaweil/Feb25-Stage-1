@@ -5,17 +5,17 @@
 // Remove WiFi and OTA libraries
 
 // Motor Pin Definitions
-#define CUT_MOTOR_PULSE_PIN 48
-#define CUT_MOTOR_DIR_PIN 47
-#define POSITION_MOTOR_PULSE_PIN 21
-#define POSITION_MOTOR_DIR_PIN 20
+#define CUT_MOTOR_PULSE_PIN 17
+#define CUT_MOTOR_DIR_PIN 18
+#define POSITION_MOTOR_PULSE_PIN 12
+#define POSITION_MOTOR_DIR_PIN 11
 
 // Switch and Sensor Pin Definitions
-#define CUT_MOTOR_POSITION_SWITCH 10
+#define CUT_MOTOR_POSITION_SWITCH 3
 #define POSITION_MOTOR_POSITION_SWITCH 9
-#define RELOAD_SWITCH 14
-#define START_CYCLE_SWITCH 13
-#define WOOD_SENSOR 11
+#define RELOAD_SWITCH 6
+#define START_CYCLE_SWITCH 5
+#define WOOD_SENSOR 10
 #define WAS_WOOD_SUCTIONED_SENSOR 8
 
 // Clamp Pin Definitions
@@ -27,7 +27,7 @@
 
 // LED Pin Definitionss
 #define RED_LED 7  // Error LED
-#define YELLOW_LED 6 // Busy/Reload LED
+#define YELLOW_LED 14 // Busy/Reload LED
 #define GREEN_LED 15   // Ready LED
 #define BLUE_LED 16    // Setup/No-Wood LED
 
@@ -54,7 +54,7 @@ const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
 
 // Speed and Acceleration Settings
-const float CUT_NORMAL_SPEED = 180;  // 4x increase from 35
+const float CUT_NORMAL_SPEED = 150;  // 4x increase from 35
 const float CUT_RETURN_SPEED = 3000;  // 4x increase from 750
 const float CUT_ACCELERATION = 4000;  // 4x increase from 1000
 const float CUT_HOMING_SPEED = 600;  // 4x increase from 150
