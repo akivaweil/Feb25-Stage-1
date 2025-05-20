@@ -41,7 +41,8 @@ enum SystemState {
   RETURNING,
   POSITIONING,
   ERROR,
-  ERROR_RESET
+  ERROR_RESET,
+  SUCTION_ERROR_HOLD // New state for specific suction error
 };
 
 SystemState currentState = STARTUP;
@@ -56,8 +57,8 @@ const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
 
 // Speed and Acceleration Settings
-const float CUT_NORMAL_SPEED = 1000;  // 4x increase from 35
-const float CUT_RETURN_SPEED = 1000;  // 4x increase from 750
+const float CUT_NORMAL_SPEED = 2000;  // 4x increase from 35
+const float CUT_RETURN_SPEED = 20000;  // 4x increase from 750
 const float CUT_ACCELERATION = 10000;  // 4x increase from 1000
 const float CUT_HOMING_SPEED = 1000;  // 4x increase from 150
 const float POSITION_NORMAL_SPEED = 20000; // Restored to original value
@@ -232,6 +233,7 @@ void loop() {
       case POSITIONING: Serial.println("POSITIONING"); break;
       case ERROR: Serial.println("ERROR"); break;
       case ERROR_RESET: Serial.println("ERROR_RESET"); break;
+      case SUCTION_ERROR_HOLD: Serial.println("SUCTION_ERROR_HOLD"); break; // Added for new state
       default: Serial.println("UNKNOWN"); break;
     }
     previousState = currentState;
@@ -323,10 +325,10 @@ void loop() {
         static bool positionMotorMoved = false;
         static unsigned long blinkTimer = 0;
         static unsigned long cutMotorHomingStartTime = 0; 
-        static bool cutMotorMovingAway = false;
+        // static bool cutMotorMovingAway = false; // No longer needed
         static bool cutMotorMovingToHome = false;
-        static bool positionMotorMovingAway = false;
-        static bool positionMotorMovingToHome = false;
+        // static bool positionMotorMovingAway = false; // No longer needed for this simplified logic
+        static bool positionMotorMovingToHome = false; // Retain for moving towards switch
         static bool positionMotorMovingToInitial = false;
 
         if (millis() - blinkTimer > 500) {
@@ -339,102 +341,82 @@ void loop() {
           if (cutMotorHomingStartTime == 0) { 
               Serial.println("Starting cut motor homing phase...");
               cutMotorHomingStartTime = millis();
+              cutMotorMovingToHome = false; // Ensure flag is reset at start of phase
           }
 
           if (cutHomingSwitch.read() == HIGH) {
-            if (!cutMotorMovingAway) {
-              Serial.println("Cut motor switch active. Moving away from switch."); 
-              if (cutMotor) {
-                cutMotor->setSpeedInHz((uint32_t)CUT_HOMING_SPEED);
-                cutMotor->moveTo(40); 
-              }
-              cutMotorMovingAway = true;
-              cutMotorMovingToHome = false; // Reset other flag
+            // Switch is active. Stop motor, set position, and consider homed.
+            Serial.println("Cut motor switch is active. Setting as homed.");
+            if (cutMotor) {
+                cutMotor->stopMove();
+                cutMotor->setCurrentPosition(0);
             }
-            if (cutMotorMovingAway && cutMotor && !cutMotor->isRunning()) {
-              Serial.println("Cut motor moved away. Now moving towards switch."); 
-              if (cutMotor) {
-                cutMotor->setSpeedInHz((uint32_t)CUT_HOMING_SPEED);
-                cutMotor->moveTo(-40000); 
-              }
-              cutMotorMovingAway = false;
-              cutMotorMovingToHome = true;
-            }
+            cutMotorHomed = true;
+            cutMotorHomingStartTime = 0; // Reset timeout timer
+            Serial.println("Cut motor homed successfully.");
+            cutMotorMovingToHome = false; // Reset flag
           } else { // Switch is not active, move towards it
             if (!cutMotorMovingToHome) {
               Serial.println("Cut motor switch not active. Moving towards switch."); 
               if (cutMotor) {
                 cutMotor->setSpeedInHz((uint32_t)CUT_HOMING_SPEED);
-                cutMotor->moveTo(-40000); 
+                cutMotor->moveTo(-40000); // Move in negative direction towards switch
               }
               cutMotorMovingToHome = true;
-              cutMotorMovingAway = false; // Reset other flag
             }
+            // Check if we hit the switch while moving towards it
+            // This explicit check is removed as the next iteration will read the switch state at the top of this block.
+            // if (cutHomingSwitch.read() == HIGH && cutMotorMovingToHome) { ... } 
+            // This was effectively redundant with the main check at the start of if(cutHomingSwitch.read() == HIGH)
           }
-
-          if (cutHomingSwitch.read() == HIGH && cutMotorMovingToHome) { // Check if switch hit WHILE moving to home
-            if (cutMotor) cutMotor->stopMove();
-            if (cutMotor) cutMotor->setCurrentPosition(0);
-            cutMotorHomed = true;
-            cutMotorHomingStartTime = 0; 
-            Serial.println("Cut motor homed successfully.");
-            cutMotorMovingAway = false; // Reset flags for next time
-            cutMotorMovingToHome = false;
-          } else if (millis() - cutMotorHomingStartTime > CUT_HOME_TIMEOUT && cutMotorHomingStartTime != 0) { 
+          
+          // Timeout check remains
+          if (!cutMotorHomed && millis() - cutMotorHomingStartTime > CUT_HOME_TIMEOUT && cutMotorHomingStartTime != 0) { 
               Serial.println("Cut motor homing timeout!"); 
               if (cutMotor) cutMotor->stopMove();
               cutMotorHomingStartTime = 0; // Stop timeout check by resetting
-              // Consider transitioning to ERROR state here if desired
-              // currentState = ERROR;
-              // errorStartTime = millis();
+              // Consider transitioning to ERROR state here if desired, or retrying homing for cut motor
+              // For now, it will just proceed to position motor homing if timeout occurs and cutMotorHomed is still false.
+              // To force re-homing or error, you'd set currentState = ERROR or reset cutMotorHomed = false and flags.
           }
         } else if (!positionMotorHomed) {
-          if (!positionMotorMovingAway && !positionMotorMovingToHome) { // Print only once when starting this phase
+          // Print only once when starting this phase and disengage clamp
+          static bool positionHomingPhaseInitiated = false;
+          if (!positionHomingPhaseInitiated) {
             Serial.println("Starting position motor homing phase..."); 
-            digitalWrite(POSITION_CLAMP, HIGH); 
+            digitalWrite(POSITION_CLAMP, HIGH); // Disengage clamp for homing
             Serial.println("Position clamp disengaged for homing."); 
+            positionHomingPhaseInitiated = true;
+            positionMotorMovingToHome = false; // Ensure this is reset at the start of the phase
           }
 
           if (positionHomingSwitch.read() == HIGH) {
-            if (!positionMotorMovingAway) {
-              Serial.println("Position motor switch active. Moving away from switch.");
-              if (positionMotor) {
-                positionMotor->setSpeedInHz((uint32_t)POSITION_NORMAL_SPEED); // Use normal speed to move away quickly if on switch
-                positionMotor->moveTo(100 * POSITION_MOTOR_STEPS_PER_INCH); 
-              }
-              positionMotorMovingAway = true;
-              positionMotorMovingToHome = false;
+            // Switch is active. Stop motor, set position with offset, and consider homed.
+            Serial.println("Position motor switch is active. Setting as homed with offset.");
+            if (positionMotor) {
+                positionMotor->stopMove();
+                // Set current position to be slightly off the switch, as per original logic.
+                positionMotor->setCurrentPosition(-1 * POSITION_MOTOR_STEPS_PER_INCH); 
             }
-            if (positionMotorMovingAway && positionMotor && !positionMotor->isRunning()) {
-              Serial.println("Position motor moved away. Now moving towards switch.");
-              if (positionMotor) {
-                positionMotor->setSpeedInHz((uint32_t)POSITION_HOMING_SPEED);
-                positionMotor->moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); 
-              }
-              positionMotorMovingAway = false;
-              positionMotorMovingToHome = true;
-            }
-          } else { // Switch is not active, move towards it
-            if (!positionMotorMovingToHome) {
-              Serial.println("Position motor switch not active. Moving towards switch.");
-              if (positionMotor) {
-                positionMotor->setSpeedInHz((uint32_t)POSITION_HOMING_SPEED);
-                positionMotor->moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); 
-              }
-              positionMotorMovingToHome = true;
-              positionMotorMovingAway = false;
-            }
-          }
-
-          if (positionHomingSwitch.read() == HIGH && positionMotorMovingToHome) { // Check if switch hit WHILE moving to home
-            if (positionMotor) positionMotor->stopMove();
-            if (positionMotor) positionMotor->setCurrentPosition(-1 * POSITION_MOTOR_STEPS_PER_INCH);
             positionMotorHomed = true;
             Serial.println("Position motor homed successfully.");
-            if (positionMotor) positionMotor->setSpeedInHz((uint32_t)POSITION_NORMAL_SPEED);
-            positionMotorMovingAway = false; // Reset flags
-            positionMotorMovingToHome = false;
+            if (positionMotor) positionMotor->setSpeedInHz((uint32_t)POSITION_NORMAL_SPEED); // Prepare for next move (to initial position)
+            positionMotorMovingToHome = false;    // Reset flag
+            positionHomingPhaseInitiated = false; // Reset for next potential homing cycle
+          } else { // Switch is not active, move towards it
+            if (!positionMotorMovingToHome) { // If not already commanded to move
+              Serial.println("Position motor switch not active. Moving towards switch."); 
+              if (positionMotor) {
+                positionMotor->setSpeedInHz((uint32_t)POSITION_HOMING_SPEED);
+                positionMotor->moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); // Large move towards switch
+              }
+              positionMotorMovingToHome = true;
+            }
+            // The next loop iteration will check positionHomingSwitch.read() again if it's still moving.
           }
+          // Note: No explicit timeout for position motor homing in this simplified version,
+          // relying on it hitting the switch. Add if necessary.
+
         } else if (!positionMotorMoved) {
           if (!positionMotorMovingToInitial) {
             Serial.println("Moving position motor to initial position after homing."); 
@@ -572,41 +554,30 @@ void loop() {
             case 1: 
               // Modified to use >= as per original file content for cutMotor->getCurrentPosition()
               if (cutMotor && cutMotor->getCurrentPosition() >= (1.0 * CUT_MOTOR_STEPS_PER_INCH)) {
-                Serial.println("Cutting Stage 1: Cut motor at >= 1 inch, checking wood suction."); 
-                if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == LOW) {
-                  // Serial.println("Wood suction error detected! Restarting system."); 
-                  // digitalWrite(BLUE_LED, LOW);
-                  // digitalWrite(GREEN_LED, LOW);
-                  // digitalWrite(YELLOW_LED, LOW);
-                  
-                  // for (int i = 0; i < 5; i++) {
-                  //   digitalWrite(RED_LED, HIGH);
-                  //   delay(150);
-                  //   digitalWrite(RED_LED, LOW);
-                  //   delay(150);
-                  // }
-                  // esp_restart();
-                  Serial.println("Wood suction error detected! Transitioning to HOMING state.");
-                  // Stop motors before transitioning to homing, to be safe
-                  if (cutMotor) cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition()); // or stopMove()
-                  if (positionMotor) positionMotor->forceStopAndNewPosition(positionMotor->getCurrentPosition()); // or stopMove()
-                  
-                  // Reset relevant flags from cutting cycle if any
-                  cuttingCycleInProgress = false; // Should be reset before homing
-                  // cuttingStage = 0; // Will be reset if HOMING completes and goes to READY, then new cut
-                  // noWoodStage = 0; // Reset for safety, though likely not active here
+                Serial.println("Cutting Stage 1: Cut motor at >= 1 inch, checking wood suction.");
+                if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == LOW) { // LOW
+                 means NO SUCTION (Error condition)
+                  Serial.println("Wood suction error detected! Waiting for cycle switch OFF then ON to reset.");
+                  // Stop motors
+                  if (cutMotor) cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
+                  if (positionMotor) positionMotor->forceStopAndNewPosition(positionMotor->getCurrentPosition());
 
-                  // Turn off any active cutting LEDs, HOMING will set its own (BLUE)
-                  digitalWrite(YELLOW_LED, LOW); // Busy LED off
-                  digitalWrite(GREEN_LED, LOW);  // Ready LED off (if it was somehow on)
-                  digitalWrite(RED_LED, LOW);    // Error LED off (if it was somehow on)
+                  cuttingCycleInProgress = false;
+                  cuttingStage = 0; // Reset cutting stage
+                  noWoodStage = 0;  // Reset no wood stage
 
-                  currentState = HOMING; // Transition to HOMING state
-                  // Break from the inner switch (cuttingStage) and the outer switch (currentState) will take over in next loop iteration.
+                  // Set LEDs for suction error state
+                  digitalWrite(RED_LED, HIGH);
+                  digitalWrite(YELLOW_LED, LOW);
+                  digitalWrite(GREEN_LED, LOW);
+                  digitalWrite(BLUE_LED, LOW);
+
+                  currentState = SUCTION_ERROR_HOLD; // Transition to new error hold state
                   break; // Break from cuttingStage switch
+                } else { // Sensor is LOW, suction is OK
+                    cuttingStage = 2;
+                    Serial.println("Cutting Stage 1: Wood suction OK (or not present). Proceeding to stage 2.");
                 }
-                cuttingStage = 2;
-                Serial.println("Cutting Stage 1: Wood suction OK (or not present). Proceeding to stage 2."); 
               }
               break;
               
@@ -965,6 +936,28 @@ void loop() {
       // Return to homing state to re-initialize
       currentState = STARTUP;
       Serial.println("Error reset, restarting system. Transitioning to STARTUP."); 
+      break;
+
+    //* ************************************************************************
+    //* ********************* SUCTION ERROR HOLD *******************************
+    //* ************************************************************************
+    // Handles waiting for user to reset a wood suction error via cycle switch.
+    case SUCTION_ERROR_HOLD:
+      // Keep RED LED on to indicate error
+      digitalWrite(RED_LED, HIGH);
+      digitalWrite(YELLOW_LED, LOW);
+      digitalWrite(GREEN_LED, LOW);
+      digitalWrite(BLUE_LED, LOW);
+
+      if (startCycleSwitch.rose()) { // Check for start switch OFF to ON transition
+        Serial.println("Start cycle switch toggled ON. Resetting from suction error. Transitioning to HOMING.");
+        digitalWrite(RED_LED, LOW);   // Turn off error LED
+        
+        continuousModeActive = false; // Ensure continuous mode is off
+        startSwitchSafe = false;      // Require user to cycle switch OFF then ON for a new actual start
+        
+        currentState = HOMING;        // Go to HOMING to re-initialize
+      }
       break;
   }
   
