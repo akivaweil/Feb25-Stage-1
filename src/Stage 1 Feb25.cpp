@@ -40,12 +40,12 @@
 // Servo Sweep Configuration
 // const unsigned long SERVO_SWEEP_INTERVAL_MS = 1000; // Interval for servo sweep // <<< REMOVE
 // Servo timing configuration
-const unsigned long SERVO_HOLD_AT_90_DURATION_MS = 2000; // Duration to hold servo at 90 degrees
+const unsigned long SERVO_HOLD_AT_90_DURATION_MS = 1000; // Duration to hold servo at 90 degrees
 unsigned long servoAt90StartTime = 0;
 bool servoIsAt90AndTiming = false;
 
 // Catcher Clamp timing variables
-const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 1000; // 1 second
+const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 500; // 1 second
 unsigned long catcherClampEngageTime = 0;
 bool catcherClampIsEngaged = false;
 
@@ -75,7 +75,7 @@ const int POSITION_HOMING_DIRECTION = -1;
 
 // Speed and Acceleration Settings
 const float CUT_NORMAL_SPEED = 2000;  // 4x increase from 35
-const float CUT_RETURN_SPEED = 20000;  // 4x increase from 750
+const float CUT_RETURN_SPEED = 20000;  // Reverted to original // 4x increase from 750
 const float CUT_ACCELERATION = 10000;  // 4x increase from 1000
 const float CUT_HOMING_SPEED = 1000;  // 4x increase from 150
 const float POSITION_NORMAL_SPEED = 20000; // Restored to original value
@@ -678,14 +678,14 @@ void loop() {
                 bool noWoodDetected = (sensorValue == HIGH);
                 
                 if (noWoodDetected) {
-                  Serial.println("Cutting Stage 2: No wood detected after cut. Entering no-wood operation (inlined)."); 
+                  Serial.println("Cutting Stage 2: No wood detected after cut. Entering no-wood operation (inlined).");
                   // Inlining performNoWoodOperation logic:
                   Serial.println("Entering performNoWoodOperation function (inlined).");
                   if (cutMotor) {
                     cutMotor->setSpeedInHz((uint32_t)CUT_RETURN_SPEED); // Already set above, but being explicit
-                    cutMotor->moveTo(0); 
+                    cutMotor->moveTo(-0.02 * CUT_MOTOR_STEPS_PER_INCH); // Minimal overshoot to ensure switch activation
                   }
-                  Serial.println("performNoWoodOperation (inlined): Cut motor set to return to home."); 
+                  Serial.println("performNoWoodOperation (inlined): Cut motor set to return to home (with minimal overshoot).");
                   if (positionMotor) {
                     positionMotor->setSpeedInHz((uint32_t)POSITION_NORMAL_SPEED);
                   }
@@ -703,7 +703,7 @@ void loop() {
                   digitalWrite(WOOD_SECURE_CLAMP, HIGH); 
                   Serial.println("Position and Wood Secure clamps disengaged for simultaneous return.");
 
-                  if (cutMotor) cutMotor->moveTo(0);
+                  if (cutMotor) cutMotor->moveTo(-0.02 * CUT_MOTOR_STEPS_PER_INCH); // Minimal overshoot to ensure switch activation
                   if (positionMotor) positionMotor->moveTo(0);
                   
                   cuttingStage = 7; 
@@ -741,7 +741,8 @@ void loop() {
                     Serial.print("Cut position switch read attempt "); Serial.print(i+1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
                     if (cutHomingSwitch.read() == HIGH) {
                       sensorDetectedHome = true;
-                      Serial.println("Cut motor position switch detected HIGH.");
+                      if (cutMotor) cutMotor->setCurrentPosition(0); // Recalibrate to 0 when switch is hit
+                      Serial.println("Cut motor position switch detected HIGH. Position recalibrated to 0.");
                       break;
                     }
                   }
@@ -867,9 +868,10 @@ void loop() {
                       for (int i = 0; i < 3; i++) {
                         delay(30);  
                         cutHomingSwitch.update();
-                        Serial.print("Cut position switch read attempt "); Serial.print(i+1); Serial.print(": "); Serial.println(cutHomingSwitch.read()); 
+                        Serial.print("Cut position switch read attempt "); Serial.print(i+1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
                         if (cutHomingSwitch.read() == HIGH) {
                           sensorDetectedHome = true;
+                          if (cutMotor) cutMotor->setCurrentPosition(0); // Recalibrate to 0 when switch is hit
                           Serial.println("Cut motor position switch detected HIGH during no-wood sequence completion."); 
                           break;  
                         }
@@ -911,7 +913,8 @@ void loop() {
                   Serial.print("Cut position switch read attempt "); Serial.print(i+1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
                   if (cutHomingSwitch.read() == HIGH) {
                     sensorDetectedHome = true;
-                    Serial.println("Cut motor position switch detected HIGH.");
+                    if (cutMotor) cutMotor->setCurrentPosition(0); // Recalibrate to 0 when switch is hit
+                    Serial.println("Cut motor position switch detected HIGH. Position recalibrated to 0.");
                     break;
                   }
                 }
@@ -1028,21 +1031,32 @@ void loop() {
     //* ********************* SUCTION ERROR HOLD *******************************
     //* ************************************************************************
     // Handles waiting for user to reset a wood suction error via cycle switch.
+    // Red LED blinks slowly (every 2 seconds).
     case SUCTION_ERROR_HOLD:
-      // Keep RED LED on to indicate error
-      digitalWrite(RED_LED, HIGH);
-      digitalWrite(YELLOW_LED, LOW);
-      digitalWrite(GREEN_LED, LOW);
-      digitalWrite(BLUE_LED, LOW);
+      { // Scope for static variables
+        static unsigned long lastSuctionErrorBlinkTime = 0;
+        static bool suctionErrorBlinkState = false;
 
-      if (startCycleSwitch.rose()) { // Check for start switch OFF to ON transition
-        Serial.println("Start cycle switch toggled ON. Resetting from suction error. Transitioning to HOMING.");
-        digitalWrite(RED_LED, LOW);   // Turn off error LED
-        
-        continuousModeActive = false; // Ensure continuous mode is off
-        startSwitchSafe = false;      // Require user to cycle switch OFF then ON for a new actual start
-        
-        currentState = HOMING;        // Go to HOMING to re-initialize
+        // Blink RED_LED every 2 seconds
+        if (millis() - lastSuctionErrorBlinkTime >= 1500) {
+          lastSuctionErrorBlinkTime = millis();
+          suctionErrorBlinkState = !suctionErrorBlinkState;
+          digitalWrite(RED_LED, suctionErrorBlinkState);
+        }
+        // Ensure other LEDs are off
+        digitalWrite(YELLOW_LED, LOW);
+        digitalWrite(GREEN_LED, LOW);
+        digitalWrite(BLUE_LED, LOW);
+
+        if (startCycleSwitch.rose()) { // Check for start switch OFF to ON transition
+          Serial.println("Start cycle switch toggled ON. Resetting from suction error. Transitioning to HOMING.");
+          digitalWrite(RED_LED, LOW);   // Turn off error LED explicitly before changing state
+          
+          continuousModeActive = false; // Ensure continuous mode is off
+          startSwitchSafe = false;      // Require user to cycle switch OFF then ON for a new actual start
+          
+          currentState = HOMING;        // Go to HOMING to re-initialize
+        }
       }
       break;
   }
