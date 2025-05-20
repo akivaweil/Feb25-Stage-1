@@ -2,6 +2,7 @@
 #include <Bounce2.h>
 #include <FastAccelStepper.h>
 #include <esp_system.h> // Include for ESP.restart()
+#include <ESP32Servo.h> // <<< Corrected Servo library include
 #include "OTAUpdater/ota_updater.h" // Include for OTA
 // Remove WiFi and OTA libraries
 
@@ -10,6 +11,9 @@
 #define CUT_MOTOR_DIR_PIN 11
 #define POSITION_MOTOR_PULSE_PIN 17
 #define POSITION_MOTOR_DIR_PIN 18
+
+// Servo Pin Definition
+#define SERVO_PIN 14 // <<< Servo motor pin
 
 // Switch and Sensor Pin Definitions
 #define CUT_MOTOR_HOMING_SWITCH 3
@@ -22,6 +26,7 @@
 // Clamp Pin Definitions
 #define POSITION_CLAMP 36
 #define WOOD_SECURE_CLAMP 35
+#define CATCHER_CLAMP_PIN 42 // New Catcher Clamp Pin
 
 // Add signal pin definition
 #define STAGE2_SIGNAL_OUT_PIN 8  // Using pin 19 for direct signaling to Stage 1 to Stage 2 machine
@@ -31,6 +36,18 @@
 #define YELLOW_LED 21 // Busy/Reload LED
 #define GREEN_LED 37   // Ready LED
 #define BLUE_LED 19    // Setup/No-Wood LED
+
+// Servo Sweep Configuration
+// const unsigned long SERVO_SWEEP_INTERVAL_MS = 1000; // Interval for servo sweep // <<< REMOVE
+// Servo timing configuration
+const unsigned long SERVO_HOLD_AT_90_DURATION_MS = 2000; // Duration to hold servo at 90 degrees
+unsigned long servoAt90StartTime = 0;
+bool servoIsAt90AndTiming = false;
+
+// Catcher Clamp timing variables
+const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 1000; // 1 second
+unsigned long catcherClampEngageTime = 0;
+bool catcherClampIsEngaged = false;
 
 // System States
 enum SystemState {
@@ -75,6 +92,9 @@ FastAccelStepperEngine engine = FastAccelStepperEngine();
 FastAccelStepper *cutMotor = NULL;
 FastAccelStepper *positionMotor = NULL;
 
+// Servo object
+Servo servoMotor; // <<< Corrected Servo motor object type
+
 // Bounce objects for debouncing switches
 Bounce cutHomingSwitch = Bounce();
 Bounce positionHomingSwitch = Bounce();
@@ -106,12 +126,25 @@ unsigned long signalStage2StartTime = 0;
 bool signalStage2Active = false;
 const unsigned long STAGE2_SIGNAL_DURATION = 150; // 150 milliseconds signal duration
 
+const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 0.25; // New constant
+
 void sendSignalToStage2() {
   // Set the signal pin HIGH to trigger Stage 1 to Stage 2 machine (active HIGH)
   digitalWrite(STAGE2_SIGNAL_OUT_PIN, HIGH);
   signalStage2StartTime = millis();
   signalStage2Active = true;
   Serial.println("Signal sent to Stage 1 to Stage 2 machine");
+
+  servoMotor.write(90);
+  servoAt90StartTime = millis();
+  servoIsAt90AndTiming = true;
+  Serial.println("Servo moved to 90 degrees with signal.");
+
+  // Catcher Clamp engagement is now handled earlier in the CUTTING state
+  // digitalWrite(CATCHER_CLAMP_PIN, HIGH); // Engage Catcher Clamp (reversed logic: HIGH = engaged) // <<< REMOVED
+  // catcherClampEngageTime = millis(); // <<< REMOVED
+  // catcherClampIsEngaged = true; // <<< REMOVED
+  // Serial.println("Catcher Clamp engaged."); // <<< REMOVED
 }
 
 void setup() {
@@ -141,6 +174,10 @@ void setup() {
   pinMode(WOOD_SECURE_CLAMP, OUTPUT);
   digitalWrite(POSITION_CLAMP, LOW);  // Start with position clamp engaged
   digitalWrite(WOOD_SECURE_CLAMP, LOW); // Start with wood secure clamp engaged
+  
+  // Configure Catcher Clamp Pin
+  pinMode(CATCHER_CLAMP_PIN, OUTPUT);
+  digitalWrite(CATCHER_CLAMP_PIN, LOW); // Start with Catcher Clamp disengaged (reversed logic: LOW = disengaged)
   
   // Configure LED pins
   pinMode(RED_LED, OUTPUT);
@@ -217,10 +254,29 @@ void setup() {
   
   // Serial.println("System initialized, ready to begin homing sequence");
   delay(10);  // Brief delay before starting homing
+
+  // Attach and initialize servo
+  servoMotor.setTimerWidth(14); // Set timer width to 14 bits for ESP32-S3 compatibility
+  servoMotor.attach(SERVO_PIN); // Reverted to original attach method
+  servoMotor.write(2); // Move servo to initial 2 degrees
 }
 
 void loop() {
   handleOTA(); // Handle OTA requests
+
+  // Handle servo return after 2s hold at 90 degrees
+  if (servoIsAt90AndTiming && (millis() - servoAt90StartTime >= SERVO_HOLD_AT_90_DURATION_MS)) {
+      servoMotor.write(2);
+      servoIsAt90AndTiming = false;
+      Serial.println("Servo returned to 2 degrees after hold.");
+  }
+
+  // Handle Catcher Clamp disengagement after 1 second
+  if (catcherClampIsEngaged && (millis() - catcherClampEngageTime >= CATCHER_CLAMP_ENGAGE_DURATION_MS)) {
+    digitalWrite(CATCHER_CLAMP_PIN, LOW);
+    catcherClampIsEngaged = false;
+    Serial.println("Catcher Clamp disengaged after 1 second.");
+  }
 
   if (currentState != previousState) {
     Serial.print("Current State: ");
@@ -445,6 +501,8 @@ void loop() {
           digitalWrite(BLUE_LED, LOW);
           digitalWrite(GREEN_LED, HIGH);
 
+          servoMotor.write(2); // Ensure servo is at 2 degrees before entering READY
+          Serial.println("Servo set to 2 degrees on entering READY state after homing.");
           currentState = READY;
         }
       } 
@@ -455,11 +513,27 @@ void loop() {
     //* ************************************************************************
     // Handles the ready state, awaiting user input or automatic cycle start.
     case READY:
-      Serial.println("Current State: READY");
       // System is ready for operation
       if (!isReloadMode) {
         // Solid green LED to indicate ready
         digitalWrite(GREEN_LED, HIGH);
+
+        // Servo sweep logic for testing // <<< REMOVE BLOCK START
+        // static int servoTargetAngle = 75;
+        // static unsigned long lastServoMoveTime = 0;
+
+        // if (millis() - lastServoMoveTime >= SERVO_SWEEP_INTERVAL_MS) {
+        //   lastServoMoveTime = millis();
+        //   if (servoTargetAngle == 75) {
+        //     servoTargetAngle = 45;
+        //   } else {
+        //     servoTargetAngle = 75;
+        //   }
+        //   servoMotor.write(servoTargetAngle);
+        //   Serial.print("Servo moved to: ");
+        //   Serial.println(servoTargetAngle);
+        // } // <<< REMOVE BLOCK END
+        // Servo is managed by setup/homing and the signal timing logic
         
         // Start a new cycle if:
         // 1. Start switch was just flipped ON (rising edge), OR
@@ -507,6 +581,7 @@ void loop() {
         static unsigned long signalStartTime = 0; // From performCuttingOperation
         static bool signalActive = false;      // From performCuttingOperation
         static bool homePositionErrorDetected = false; // From performCuttingOperation
+        static bool catcherClampActivatedThisCycle = false; // <<< NEW
         
         // Static variables from performNoWoodOperation, to be used within cuttingStage 6
         static int noWoodStage = 0;
@@ -548,6 +623,7 @@ void loop() {
             case 0: 
               Serial.println("Cutting Stage 0: Starting cut motion."); 
               if (cutMotor) cutMotor->moveTo(CUT_TRAVEL_DISTANCE * CUT_MOTOR_STEPS_PER_INCH);
+              catcherClampActivatedThisCycle = false; // Reset for this cut cycle
               cuttingStage = 1;
               break;
               
@@ -555,8 +631,7 @@ void loop() {
               // Modified to use >= as per original file content for cutMotor->getCurrentPosition()
               if (cutMotor && cutMotor->getCurrentPosition() >= (1.0 * CUT_MOTOR_STEPS_PER_INCH)) {
                 Serial.println("Cutting Stage 1: Cut motor at >= 1 inch, checking wood suction.");
-                if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == LOW) { // LOW
-                 means NO SUCTION (Error condition)
+                if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == LOW) { // LOW means NO SUCTION (Error condition)
                   Serial.println("Wood suction error detected! Waiting for cycle switch OFF then ON to reset.");
                   // Stop motors
                   if (cutMotor) cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
@@ -582,9 +657,20 @@ void loop() {
               break;
               
             case 2: 
+              // Early Catcher Clamp Activation
+              if (!catcherClampActivatedThisCycle && cutMotor &&
+                  cutMotor->getCurrentPosition() >= ((CUT_TRAVEL_DISTANCE - CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES) * CUT_MOTOR_STEPS_PER_INCH)) {
+                Serial.println("Cutting Stage 2: Activating Catcher Clamp (early).");
+                digitalWrite(CATCHER_CLAMP_PIN, HIGH); // Engage Catcher Clamp (reversed logic: HIGH = engaged)
+                catcherClampEngageTime = millis();
+                catcherClampIsEngaged = true;
+                catcherClampActivatedThisCycle = true;
+              }
+
+              // Check for full cut completion
               if (cutMotor && !cutMotor->isRunning()) {
-                Serial.println("Cutting Stage 2: Cut complete."); 
-                sendSignalToStage2(); // Assuming sendSignalToStage2 is global
+                Serial.println("Cutting Stage 2: Cut fully complete."); 
+                sendSignalToStage2(); // Handles servo and Stage 2 signal (clamp already handled or will be handled if not yet)
 
                 if (cutMotor) cutMotor->setSpeedInHz((uint32_t)CUT_RETURN_SPEED);
 
