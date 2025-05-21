@@ -133,6 +133,41 @@ void allLedsOff() {
     turnBlueLedOff();
 }
 
+// Point 1: LED Blinking Logic
+void handleHomingLedBlink() {
+    static unsigned long blinkTimer = 0; // Retain static for independent timing
+    if (millis() - blinkTimer > 500) {
+        blinkState = !blinkState;
+        if (blinkState) turnBlueLedOn(); else turnBlueLedOff();
+        blinkTimer = millis();
+    }
+}
+
+void handleErrorLedBlink() {
+    if (millis() - lastErrorBlinkTime > 250) { // lastErrorBlinkTime is global
+        errorBlinkState = !errorBlinkState; // errorBlinkState is global
+        if(errorBlinkState) turnRedLedOn(); else turnRedLedOff();
+        if(!errorBlinkState) turnYellowLedOn(); else turnYellowLedOff();
+        lastErrorBlinkTime = millis();
+    }
+}
+
+// Note: For SUCTION_ERROR_HOLD, the local static variables were moved to global
+// or passed as references if they need to be unique to that state's instance of blinking.
+// For this refactor, assuming lastSuctionErrorBlinkTime and suctionErrorBlinkState
+// were intended to be specific to the SUCTION_ERROR_HOLD state, they are passed by reference.
+void handleSuctionErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef) {
+    if (millis() - lastBlinkTimeRef >= 1500) {
+        lastBlinkTimeRef = millis();
+        blinkStateRef = !blinkStateRef;
+        if(blinkStateRef) turnRedLedOn(); else turnRedLedOff();
+    }
+    // Ensure other LEDs are off
+    turnYellowLedOff();
+    turnGreenLedOff();
+    turnBlueLedOff();
+}
+
 //* ************************************************************************
 //* *********************** MOTOR CONTROL FUNCTIONS ************************
 //* ************************************************************************
@@ -252,7 +287,135 @@ void movePositionMotorToInitialAfterHoming() {
         movePositionMotorToTravel(); // Moves to POSITION_TRAVEL_DISTANCE
         // Wait for move completion (blocking for simplicity, can be non-blocking)
         while(positionMotor->isRunning()){
-            // delay(1);
+            // delay(1); // Consider if non-blocking is needed for responsiveness
         }
     }
+}
+
+// Point 3: Complex conditional logic
+// Checks the cut motor homing switch multiple times and recalibrates if detected.
+// Returns true if home detected and recalibrated, false otherwise.
+bool checkAndRecalibrateCutMotorHome(int attempts) {
+    if (!cutMotor) return false; // Should not happen if motor is initialized
+
+    bool sensorDetectedHome = false;
+    for (int i = 0; i < attempts; i++) {
+        delay(30); // Small delay for sensor to settle or for debounce update
+        cutHomingSwitch.update();
+        Serial.print("Cut position switch read attempt "); Serial.print(i + 1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
+        if (cutHomingSwitch.read() == HIGH) {
+            sensorDetectedHome = true;
+            cutMotor->setCurrentPosition(0); // Recalibrate to 0 when switch is hit
+            Serial.println("Cut motor position switch detected HIGH. Position recalibrated to 0.");
+            break;
+        }
+    }
+    return sensorDetectedHome;
+}
+
+//* ************************************************************************
+//* ************************* SWITCH LOGIC FUNCTIONS ***********************
+//* ************************************************************************
+// Point 2: Switch handling
+
+void handleReloadMode() {
+    if (currentState == READY) { // Only applicable in READY state
+        bool reloadSwitchOn = reloadSwitch.read() == HIGH;
+        if (reloadSwitchOn && !isReloadMode) {
+            isReloadMode = true;
+            retractPositionClamp();
+            retractWoodSecureClamp();
+            turnYellowLedOn();
+            Serial.println("Entered reload mode");
+        } else if (!reloadSwitchOn && isReloadMode) {
+            isReloadMode = false;
+            extendPositionClamp();
+            extendWoodSecureClamp();
+            turnYellowLedOff();
+            Serial.println("Exited reload mode, ready for operation");
+        }
+    }
+}
+
+void handleErrorAcknowledgement() {
+    // This handles the general error acknowledgement via reloadSwitch
+    // It was present in the main loop and also within the CUTTING state's homePositionErrorDetected block.
+    if (reloadSwitch.rose() && (currentState == ERROR || currentState == CUTTING)) { // Check if in ERROR or if a cutting error is active
+        // For CUTTING state, the homePositionErrorDetected flag logic needs to remain there,
+        // but the transition to ERROR_RESET can be centralized if errorAcknowledged is set.
+        if (currentState == ERROR) {
+            currentState = ERROR_RESET;
+            errorAcknowledged = true; // Set flag, main loop will see this for ERROR state
+            Serial.println("Error acknowledged by reload switch (from ERROR state). Transitioning to ERROR_RESET.");
+        }
+        // If in CUTTING, setting errorAcknowledged might be used by the CUTTING state to proceed.
+        // The original CUTTING state logic directly transitioned. For now, we set the flag.
+        // The calling code in CUTTING will need to check this flag if it relies on it.
+        // For direct transition from specific cutting error, that logic is better kept in cutting stage.
+        // This function primarily handles the generic ERROR state reset.
+    }
+}
+
+void handleStartSwitchSafety() {
+    // Original logic from setup() and main loop for startSwitchSafe
+    // Call this once in setup() after startCycleSwitch.update()
+    // And continuously in the main loop before checking shouldStartCycle()
+    if (!startSwitchSafe && startCycleSwitch.fell()) {
+        startSwitchSafe = true;
+        Serial.println("Start switch is now safe to use (cycled OFF).");
+    }
+    // Initial check (typically for setup)
+    // This part might be better directly in setup, but included here for completeness if called from there.
+    // If called repeatedly from loop, this `else if` might be redundant if startSwitchSafe is managed correctly.
+    /* else if (startCycleSwitch.read() == HIGH && !startSwitchSafe) {
+        Serial.println("WARNING: Start switch is ON. Turn it OFF before operation.");
+    }*/
+}
+
+void handleStartSwitchContinuousMode(){
+    bool startSwitchOn = startCycleSwitch.read() == HIGH;
+    if (startSwitchOn != continuousModeActive && startSwitchSafe) {
+        continuousModeActive = startSwitchOn;
+        if (continuousModeActive) {
+            Serial.println("Continuous operation mode activated");
+        } else {
+            Serial.println("Continuous operation mode deactivated");
+        }
+    }
+}
+
+//* ************************************************************************
+//* ************************* STATE LOGIC HELPERS **************************
+//* ************************************************************************
+// Point 3: Complex conditional logic
+
+bool shouldStartCycle() {
+    // Condition from READY state to start a cycle
+    return ((startCycleSwitch.rose() || (continuousModeActive && !cuttingCycleInProgress))
+            && !woodSuctionError && startSwitchSafe);
+}
+
+// Point 4: Servo Timing
+void handleServoReturn() {
+    if (servoIsAt90AndTiming && (millis() - servoAt90StartTime >= SERVO_HOLD_AT_90_DURATION_MS)) {
+        servoMotor.write(2);
+        servoIsAt90AndTiming = false;
+        Serial.println("Servo returned to 2 degrees after hold.");
+    }
+}
+
+// Function for point 5, if pursued and renamed
+void handleStage2SignalTiming() { // Consider renaming if it's for TA
+  if (signalStage2Active && millis() - signalStage2StartTime >= STAGE2_SIGNAL_DURATION) {
+    digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW); // Return to inactive state (LOW)
+    signalStage2Active = false;
+    Serial.println("Signal to Stage 2/TA completed"); // Update print message
+  }
+}
+
+void handleCatcherClampDisengage() { // Point 4
+  if (catcherClampIsEngaged && (millis() - catcherClampEngageTime >= CATCHER_CLAMP_ENGAGE_DURATION_MS)) {
+    retractCatcherClamp();
+    Serial.println("Catcher Clamp disengaged after 1 second.");
+  }
 } 

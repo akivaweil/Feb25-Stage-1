@@ -52,19 +52,7 @@ const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 500; // 1 second
 unsigned long catcherClampEngageTime = 0;
 bool catcherClampIsEngaged = false;
 
-// System States
-enum SystemState {
-  STARTUP,
-  HOMING,
-  READY,
-  CUTTING,
-  RETURNING,
-  POSITIONING,
-  ERROR,
-  ERROR_RESET,
-  SUCTION_ERROR_HOLD // New state for specific suction error
-};
-
+// SystemStates Enum is now in Functions.h
 SystemState currentState = STARTUP;
 SystemState previousState = ERROR_RESET; // Initialize to a different state to ensure first print
 
@@ -323,14 +311,14 @@ void loop() {
       isReloadMode = true;
       retractPositionClamp(); // Disengage position clamp
       retractWoodSecureClamp(); // Disengage wood secure clamp
-      turnYellowLedOn();     // Turn on yellow LED for reload mode
+      turnBlueLedOn();     // Turn on blue LED for reload mode
       // Serial.println("Entered reload mode");
     } else if (!reloadSwitchOn && isReloadMode) {
       // Exit reload mode
       isReloadMode = false;
       extendPositionClamp();   // Re-engage position clamp
       extendWoodSecureClamp(); // Re-engage wood secure clamp
-      turnYellowLedOff();       // Turn off yellow LED
+      turnBlueLedOff();       // Turn off blue LED
       // Serial.println("Exited reload mode, ready for operation");
     }
   }
@@ -910,7 +898,6 @@ void loop() {
                   currentState = ERROR;
                   errorStartTime = millis(); // Global
                   cuttingStage = 0; 
-                  Serial.println("Transitioning to ERROR state due to cut motor homing failure post-simultaneous return.");
                 } else {
                   Serial.println("Cut motor position switch confirmed home. Moving position motor to final travel position.");
                   configurePositionMotorForNormalOperation();
