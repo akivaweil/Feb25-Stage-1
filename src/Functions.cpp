@@ -23,10 +23,12 @@ void sendSignalToTA() {
   signalTAActive = true;
   Serial.println("Signal sent to Transfer Arm (TA)");
 
-  servoMotor.write(90);
-  servoAt90StartTime = millis();
-  servoIsAt90AndTiming = true;
-  Serial.println("Servo moved to 90 degrees with TA signal.");
+  servoMotor.write(SERVO_ACTIVE_POSITION);
+  servoActiveStartTime = millis();
+  servoIsActiveAndTiming = true;
+  Serial.print("Servo moved to ");
+  Serial.print(SERVO_ACTIVE_POSITION);
+  Serial.println(" degrees with TA signal.");
 }
 
 //* ************************************************************************
@@ -397,11 +399,11 @@ bool shouldStartCycle() {
 
 // Point 4: Servo Timing
 void handleServoReturn() {
-    if (servoIsAt90AndTiming && (millis() - servoAt90StartTime >= SERVO_HOLD_AT_90_DURATION_MS)) {
-        servoMotor.write(2);
-        servoIsAt90AndTiming = false;
-        Serial.println("Servo returned to 2 degrees after hold.");
-    }
+    // Move servo to home position
+    servoMotor.write(SERVO_HOME_POSITION);
+    Serial.print("Servo returned to home position (");
+    Serial.print(SERVO_HOME_POSITION);
+    Serial.println(" degrees).");
 }
 
 // Function for point 5, if pursued and renamed
@@ -418,4 +420,11 @@ void handleCatcherClampDisengage() { // Point 4
     retractCatcherClamp();
     Serial.println("Catcher Clamp disengaged after 1 second.");
   }
+}
+
+void movePositionMotorToYesWoodHome() {
+    if (positionMotor) {
+        positionMotor->moveTo(0);
+        Serial.println("Position motor moving to yes-wood home position (0 inches)");
+    }
 } 

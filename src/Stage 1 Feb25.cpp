@@ -18,6 +18,10 @@ const int POSITION_MOTOR_DIR_PIN = 18;
 // Servo Pin Definition
 const int SERVO_PIN = 14;
 
+// Servo Position Constants
+const int SERVO_HOME_POSITION = 24;     // Home position (degrees)
+const int SERVO_ACTIVE_POSITION = 90;   // Position when activated (degrees)
+
 // Switch and Sensor Pin Definitions
 const int CUT_MOTOR_HOMING_SWITCH = 3;
 const int POSITION_MOTOR_HOMING_SWITCH = 16;
@@ -43,12 +47,12 @@ const int BLUE_LED = 19;
 // Servo Sweep Configuration
 // const unsigned long SERVO_SWEEP_INTERVAL_MS = 1000; // Interval for servo sweep // <<< REMOVE
 // Servo timing configuration
-const unsigned long SERVO_HOLD_AT_90_DURATION_MS = 1000; // Duration to hold servo at 90 degrees
-unsigned long servoAt90StartTime = 0;
-bool servoIsAt90AndTiming = false;
+const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS = 2000; // Duration to hold servo at active position
+unsigned long servoActiveStartTime = 0;
+bool servoIsActiveAndTiming = false;
 
 // Catcher Clamp timing variables
-const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 500; // 1 second
+const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 1500; // 1 second
 unsigned long catcherClampEngageTime = 0;
 bool catcherClampIsEngaged = false;
 
@@ -59,7 +63,7 @@ SystemState previousState = ERROR_RESET; // Initialize to a different state to e
 // Motor Configuration
 const int CUT_MOTOR_STEPS_PER_INCH = 500;  // 4x increase from 38
 const int POSITION_MOTOR_STEPS_PER_INCH = 1000; // Restored to original value
-const float CUT_TRAVEL_DISTANCE = 7.35; // inches
+const float CUT_TRAVEL_DISTANCE = 9.0; // inches
 const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
 const float CUT_MOTOR_INCREMENTAL_MOVE_INCHES = 0.2; // Inches for incremental reverse
 const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES = 0.4; // Max inches for incremental reverse before error
@@ -74,7 +78,7 @@ const int POSITION_HOMING_DIRECTION = -1;
 // * CUT MOTOR SETTINGS                                                   *
 // ************************************************************************
 // ! Normal Cutting Operation (Cutting State)
-const float CUT_MOTOR_NORMAL_SPEED = 2000;      // Speed for the cutting pass (steps/sec)
+const float CUT_MOTOR_NORMAL_SPEED = 700;      // Speed for the cutting pass (steps/sec)
 const float CUT_MOTOR_NORMAL_ACCELERATION = 10000; // Acceleration for the cutting pass (steps/sec^2)
 
 // ! Return Stroke (Returning State / End of Cutting State)
@@ -143,7 +147,10 @@ unsigned long signalTAStartTime = 0; // For Transfer Arm signal
 bool signalTAActive = false;      // For Transfer Arm signal
 const unsigned long TA_SIGNAL_DURATION = 150; // Duration for TA signal
 
-const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 0.25; // New constant
+const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.25; // New constant
+
+// New flag to track cut motor return during yes-wood mode
+bool cutMotorInYesWoodReturn = false;
 
 void setup() {
   Serial.begin(115200);
@@ -251,17 +258,38 @@ void setup() {
   // Attach and initialize servo
   servoMotor.setTimerWidth(14); // Set timer width to 14 bits for ESP32-S3 compatibility
   servoMotor.attach(SERVO_PIN); // Reverted to original attach method
-  servoMotor.write(2); // Move servo to initial 2 degrees
+  // Initial servo position set via function call instead of direct control
 }
 
 void loop() {
   handleOTA(); // Handle OTA requests
 
-  // Handle servo return after 2s hold at 90 degrees
-  if (servoIsAt90AndTiming && (millis() - servoAt90StartTime >= SERVO_HOLD_AT_90_DURATION_MS)) {
-      servoMotor.write(2);
-      servoIsAt90AndTiming = false;
-      Serial.println("Servo returned to 2 degrees after hold.");
+  // Update all debounced switches first - moved to top of loop for earlier detection
+  cutHomingSwitch.update();
+  positionHomingSwitch.update();
+  reloadSwitch.update();
+  startCycleSwitch.update();
+  
+  // Check for cut motor hitting home sensor during yes-wood return
+  if (cutMotorInYesWoodReturn && cutMotor && cutMotor->isRunning() && cutHomingSwitch.read() == HIGH) {
+    Serial.println("Cut motor hit homing sensor during yes-wood return - stopping immediately!");
+    cutMotor->forceStopAndNewPosition(0);  // Stop immediately and set position to 0
+  }
+
+  // Handle servo return after hold duration at active position AND when WAS_WOOD_SUCTIONED_SENSOR reads HIGH
+  if (servoIsActiveAndTiming && (millis() - servoActiveStartTime >= SERVO_ACTIVE_HOLD_DURATION_MS)) {
+      if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == HIGH) {
+          servoIsActiveAndTiming = false;
+          handleServoReturn(); // Call function to return servo to home position
+          Serial.println("Servo timing completed AND WAS_WOOD_SUCTIONED_SENSOR is HIGH, returning servo to home.");
+      } else {
+          // Only log this message periodically to avoid flooding the serial monitor
+          static unsigned long lastLogTime = 0;
+          if (millis() - lastLogTime >= 500) { // Log every 500ms
+              Serial.println("Waiting for WAS_WOOD_SUCTIONED_SENSOR to read HIGH before returning servo...");
+              lastLogTime = millis();
+          }
+      }
   }
 
   // Handle Catcher Clamp disengagement after 1 second
@@ -287,12 +315,6 @@ void loop() {
     previousState = currentState;
   }
 
-  // Update all debounced switches
-  cutHomingSwitch.update();
-  positionHomingSwitch.update();
-  reloadSwitch.update();
-  startCycleSwitch.update();
-  
   // Read wood sensor (active LOW per explanation)
   woodPresent = (digitalRead(WOOD_SENSOR) == LOW);
   
@@ -427,8 +449,8 @@ void loop() {
           turnBlueLedOff();
           turnGreenLedOn();
 
-          servoMotor.write(2); // Ensure servo is at 2 degrees before entering READY
-          Serial.println("Servo set to 2 degrees on entering READY state after homing.");
+          // Set initial servo position via function call
+          handleServoReturn();
           currentState = READY;
         }
       } 
@@ -676,8 +698,10 @@ void loop() {
                   retractWoodSecureClamp(); 
                   Serial.println("Position and Wood Secure clamps disengaged for simultaneous return.");
 
+                  // Set flag to indicate we're in yes-wood return mode - enable homing sensor check
+                  cutMotorInYesWoodReturn = true;
                   moveCutMotorToHome();
-                  movePositionMotorToHome();
+                  movePositionMotorToYesWoodHome();  // Changed from movePositionMotorToHome()
                   
                   cuttingStep = 7; // Renamed from cuttingStage
                 }
@@ -893,6 +917,9 @@ void loop() {
               if (cutMotor && !cutMotor->isRunning() && positionMotor && !positionMotor->isRunning()) {
                 Serial.println("Cutting Step 7: Both cut and position motors have returned home.");
                 
+                // Clear the yes-wood return flag since motors have stopped
+                cutMotorInYesWoodReturn = false;
+                
                 // Sub-step 7.1: Engage the position clamp to secure the (assumed) wood.
                 extendPositionClamp(); 
                 Serial.println("Position clamp engaged.");
@@ -917,13 +944,14 @@ void loop() {
                   Serial.println("ERROR: Cut motor position switch did not detect home after simultaneous return!");
                   stopCutMotor();
                   stopPositionMotor();
+                  cutMotorInYesWoodReturn = false; // Clear flag on error too
                   extendPositionClamp(); 
                   extendWoodSecureClamp(); 
                   turnRedLedOn();
                   turnYellowLedOff(); 
                   currentState = ERROR;
                   errorStartTime = millis(); 
-                  cuttingStep = 0; 
+                  cuttingStep = 0;
                 } else {
                   // Homing successful, proceed with next steps.
                   // Sub-step 7.3: Retract the wood secure clamp.

@@ -47,11 +47,15 @@ extern const int YELLOW_LED;
 extern const int GREEN_LED;
 extern const int BLUE_LED;
 
+// Extern declarations for servo position constants
+extern const int SERVO_HOME_POSITION;
+extern const int SERVO_ACTIVE_POSITION;
+
 // Extern declarations for global variables from "Stage 1 Feb25.cpp"
 extern SystemState currentState;
 extern Servo servoMotor;
-extern unsigned long servoAt90StartTime;
-extern bool servoIsAt90AndTiming;
+extern unsigned long servoActiveStartTime;
+extern bool servoIsActiveAndTiming;
 extern unsigned long catcherClampEngageTime;
 extern bool catcherClampIsEngaged;
 extern unsigned long signalTAStartTime; // For Transfer Arm signal
@@ -80,7 +84,7 @@ extern const float POSITION_MOTOR_RETURN_ACCELERATION;
 extern const float POSITION_MOTOR_HOMING_SPEED;
 
 // Constants
-extern const unsigned long SERVO_HOLD_AT_90_DURATION_MS;
+extern const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS;
 extern const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS;
 extern const unsigned long TA_SIGNAL_DURATION; // Duration for TA signal
 
@@ -161,6 +165,7 @@ void moveCutMotorToCut();
 void moveCutMotorToHome();
 void movePositionMotorToTravel();
 void movePositionMotorToHome();
+void movePositionMotorToYesWoodHome();  // New function for yes-wood mode
 void movePositionMotorToPosition(float targetPositionInches);
 void stopCutMotor();
 void stopPositionMotor();
