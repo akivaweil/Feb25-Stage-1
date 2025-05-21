@@ -139,29 +139,29 @@ void allLedsOff() {
 
 void configureCutMotorForCutting() {
     if (cutMotor) {
-        cutMotor->setSpeedInHz((uint32_t)CUT_NORMAL_SPEED);
-        cutMotor->setAcceleration((uint32_t)CUT_ACCELERATION);
+        cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_NORMAL_SPEED);
+        cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION);
     }
 }
 
 void configureCutMotorForReturn() {
     if (cutMotor) {
-        cutMotor->setSpeedInHz((uint32_t)CUT_RETURN_SPEED);
-        cutMotor->setAcceleration((uint32_t)CUT_ACCELERATION); // Assuming same acceleration for return for now
+        cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_RETURN_SPEED);
+        cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION); // Assuming same acceleration for return for now
     }
 }
 
 void configurePositionMotorForNormalOperation() {
     if (positionMotor) {
-        positionMotor->setSpeedInHz((uint32_t)POSITION_NORMAL_SPEED);
-        positionMotor->setAcceleration((uint32_t)POSITION_ACCELERATION);
+        positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
+        positionMotor->setAcceleration((uint32_t)POSITION_MOTOR_NORMAL_ACCELERATION);
     }
 }
 
 void configurePositionMotorForReturn() {
     if (positionMotor) {
-        positionMotor->setSpeedInHz((uint32_t)POSITION_RETURN_SPEED);
-        positionMotor->setAcceleration((uint32_t)POSITION_RETURN_ACCELERATION);
+        positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_RETURN_SPEED);
+        positionMotor->setAcceleration((uint32_t)POSITION_MOTOR_RETURN_ACCELERATION);
     }
 }
 
@@ -211,7 +211,7 @@ void stopPositionMotor() {
 void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
     if (!cutMotor) return;
     unsigned long startTime = millis();
-    cutMotor->setSpeedInHz((uint32_t)CUT_HOMING_SPEED);
+    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_HOMING_SPEED);
     cutMotor->moveTo(-40000); // Large move towards switch
 
     while (homingSwitch.read() != HIGH) {
@@ -232,7 +232,7 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
 // Basic blocking homing function for Position Motor - can be expanded
 void homePositionMotorBlocking(Bounce& homingSwitch) {
     if (!positionMotor) return;
-    positionMotor->setSpeedInHz((uint32_t)POSITION_HOMING_SPEED);
+    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_HOMING_SPEED);
     positionMotor->moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); // Large move towards switch
 
     while (homingSwitch.read() != HIGH) {

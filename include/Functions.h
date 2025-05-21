@@ -52,15 +52,16 @@ extern const float CUT_TRAVEL_DISTANCE;
 extern const float POSITION_TRAVEL_DISTANCE;
 
 // Extern declarations for speed and acceleration settings
-extern const float CUT_NORMAL_SPEED;
-extern const float CUT_RETURN_SPEED;
-extern const float CUT_ACCELERATION;
-extern const float CUT_HOMING_SPEED;
-extern const float POSITION_NORMAL_SPEED;
-extern const float POSITION_RETURN_SPEED;
-extern const float POSITION_ACCELERATION;
-extern const float POSITION_HOMING_SPEED;
-extern const float POSITION_RETURN_ACCELERATION;
+extern const float CUT_MOTOR_NORMAL_SPEED;
+extern const float CUT_MOTOR_NORMAL_ACCELERATION;
+extern const float CUT_MOTOR_RETURN_SPEED;
+extern const float CUT_MOTOR_HOMING_SPEED;
+
+extern const float POSITION_MOTOR_NORMAL_SPEED;
+extern const float POSITION_MOTOR_NORMAL_ACCELERATION;
+extern const float POSITION_MOTOR_RETURN_SPEED;
+extern const float POSITION_MOTOR_RETURN_ACCELERATION;
+extern const float POSITION_MOTOR_HOMING_SPEED;
 
 // Constants (ensure these are also defined in Stage 1 Feb25.cpp without static)
 extern const unsigned long SERVO_HOLD_AT_90_DURATION_MS;
