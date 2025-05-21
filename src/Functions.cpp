@@ -259,7 +259,6 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
             return;
         }
         // Yield for other tasks, important in blocking loops
-        // delay(1); // Or use a more RTOS-friendly yield if available
     }
     cutMotor->stopMove();
     cutMotor->setCurrentPosition(0);
@@ -274,8 +273,6 @@ void homePositionMotorBlocking(Bounce& homingSwitch) {
 
     while (homingSwitch.read() != HIGH) {
         homingSwitch.update();
-        // No timeout here as per original logic, but could be added
-        // delay(1);
     }
     positionMotor->stopMove();
     positionMotor->setCurrentPosition(-1 * POSITION_MOTOR_STEPS_PER_INCH); // Offset
@@ -289,7 +286,6 @@ void movePositionMotorToInitialAfterHoming() {
         movePositionMotorToTravel(); // Moves to POSITION_TRAVEL_DISTANCE
         // Wait for move completion (blocking for simplicity, can be non-blocking)
         while(positionMotor->isRunning()){
-            // delay(1); // Consider if non-blocking is needed for responsiveness
         }
     }
 }
@@ -302,7 +298,6 @@ bool checkAndRecalibrateCutMotorHome(int attempts) {
 
     bool sensorDetectedHome = false;
     for (int i = 0; i < attempts; i++) {
-        delay(30); // Small delay for sensor to settle or for debounce update
         cutHomingSwitch.update();
         Serial.print("Cut position switch read attempt "); Serial.print(i + 1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
         if (cutHomingSwitch.read() == HIGH) {

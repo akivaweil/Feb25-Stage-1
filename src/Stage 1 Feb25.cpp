@@ -65,7 +65,7 @@ const int CUT_MOTOR_STEPS_PER_INCH = 500;  // 4x increase from 38
 const int POSITION_MOTOR_STEPS_PER_INCH = 1000; // Restored to original value
 const float CUT_TRAVEL_DISTANCE = 9.0; // inches
 const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
-const float CUT_MOTOR_INCREMENTAL_MOVE_INCHES = 0.2; // Inches for incremental reverse
+const float CUT_MOTOR_INCREMENTAL_MOVE_INCHES = 0.05; // Inches for incremental reverse
 const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES = 0.4; // Max inches for incremental reverse before error
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
@@ -147,7 +147,7 @@ unsigned long signalTAStartTime = 0; // For Transfer Arm signal
 bool signalTAActive = false;      // For Transfer Arm signal
 const unsigned long TA_SIGNAL_DURATION = 150; // Duration for TA signal
 
-const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.25; // New constant
+const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.0; // New constant
 
 // New flag to track cut motor return during yes-wood mode
 bool cutMotorInYesWoodReturn = false;
@@ -198,13 +198,13 @@ void setup() {
   
   // Set up debouncing for switches
   cutHomingSwitch.attach(CUT_MOTOR_HOMING_SWITCH);
-  cutHomingSwitch.interval(20);  // 20ms debounce time
+  cutHomingSwitch.interval(3);  // 3ms debounce time
   
   positionHomingSwitch.attach(POSITION_MOTOR_HOMING_SWITCH);
-  positionHomingSwitch.interval(20);
+  positionHomingSwitch.interval(5);
   
   reloadSwitch.attach(RELOAD_SWITCH);
-  reloadSwitch.interval(20);
+  reloadSwitch.interval(10);
   
   startCycleSwitch.attach(START_CYCLE_SWITCH);
   startCycleSwitch.interval(20);
