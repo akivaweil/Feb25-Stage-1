@@ -16,17 +16,17 @@
 //* ************************************************************************
 // Contains functions related to signaling other stages or components.
 
-void sendSignalToStage2() {
-  // Set the signal pin HIGH to trigger Stage 1 to Stage 2 machine (active HIGH)
-  digitalWrite(STAGE2_SIGNAL_OUT_PIN, HIGH);
-  signalStage2StartTime = millis();
-  signalStage2Active = true;
-  Serial.println("Signal sent to Stage 1 to Stage 2 machine");
+void sendSignalToTA() {
+  // Set the signal pin HIGH to trigger Transfer Arm (active HIGH)
+  digitalWrite(TA_SIGNAL_OUT_PIN, HIGH);
+  signalTAStartTime = millis();
+  signalTAActive = true;
+  Serial.println("Signal sent to Transfer Arm (TA)");
 
   servoMotor.write(90);
   servoAt90StartTime = millis();
   servoIsAt90AndTiming = true;
-  Serial.println("Servo moved to 90 degrees with signal.");
+  Serial.println("Servo moved to 90 degrees with TA signal.");
 }
 
 //* ************************************************************************
@@ -405,11 +405,11 @@ void handleServoReturn() {
 }
 
 // Function for point 5, if pursued and renamed
-void handleStage2SignalTiming() { // Consider renaming if it's for TA
-  if (signalStage2Active && millis() - signalStage2StartTime >= STAGE2_SIGNAL_DURATION) {
-    digitalWrite(STAGE2_SIGNAL_OUT_PIN, LOW); // Return to inactive state (LOW)
-    signalStage2Active = false;
-    Serial.println("Signal to Stage 2/TA completed"); // Update print message
+void handleTASignalTiming() { 
+  if (signalTAActive && millis() - signalTAStartTime >= TA_SIGNAL_DURATION) {
+    digitalWrite(TA_SIGNAL_OUT_PIN, LOW); // Return to inactive state (LOW)
+    signalTAActive = false;
+    Serial.println("Signal to Transfer Arm (TA) completed"); 
   }
 }
 

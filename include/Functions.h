@@ -41,7 +41,7 @@ extern const int WAS_WOOD_SUCTIONED_SENSOR;
 extern const int POSITION_CLAMP;
 extern const int WOOD_SECURE_CLAMP;
 extern const int CATCHER_CLAMP_PIN;
-extern const int STAGE2_SIGNAL_OUT_PIN; // Consider renaming if it's for TA
+extern const int TA_SIGNAL_OUT_PIN; // Signal to Transfer Arm
 extern const int RED_LED;
 extern const int YELLOW_LED;
 extern const int GREEN_LED;
@@ -54,8 +54,8 @@ extern unsigned long servoAt90StartTime;
 extern bool servoIsAt90AndTiming;
 extern unsigned long catcherClampEngageTime;
 extern bool catcherClampIsEngaged;
-extern unsigned long signalStage2StartTime; // Consider renaming
-extern bool signalStage2Active; // Consider renaming
+extern unsigned long signalTAStartTime; // For Transfer Arm signal
+extern bool signalTAActive; // For Transfer Arm signal
 
 // Extern declarations for motor objects
 extern FastAccelStepper *cutMotor;
@@ -82,7 +82,7 @@ extern const float POSITION_MOTOR_HOMING_SPEED;
 // Constants
 extern const unsigned long SERVO_HOLD_AT_90_DURATION_MS;
 extern const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS;
-extern const unsigned long STAGE2_SIGNAL_DURATION; // Consider renaming
+extern const unsigned long TA_SIGNAL_DURATION; // Duration for TA signal
 
 // Switch objects
 extern Bounce cutHomingSwitch;
@@ -115,8 +115,8 @@ extern bool errorBlinkState;
 //* *********************** SIGNALING FUNCTIONS ****************************
 //* ************************************************************************
 // Contains functions related to signaling other stages or components.
-void sendSignalToStage2(); // Consider renaming if it's for TA
-void handleStage2SignalTiming(); // For point 5, if pursued
+void sendSignalToTA(); // Signal to Transfer Arm
+void handleTASignalTiming(); // Handles timing for TA signal
 
 //* ************************************************************************
 //* ************************* CLAMP FUNCTIONS ******************************
