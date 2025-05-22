@@ -18,7 +18,8 @@ enum SystemState {
   POSITIONING,
   ERROR,
   ERROR_RESET,
-  SUCTION_ERROR_HOLD
+  SUCTION_ERROR_HOLD,
+  WAS_WOOD_CAUGHT_ERROR // New state for wood caught error
 };
 
 // Include the main cpp file for Pin Definitions. This is a workaround.
@@ -87,6 +88,7 @@ extern const float POSITION_MOTOR_HOMING_SPEED;
 extern const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS;
 extern const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS;
 extern const unsigned long TA_SIGNAL_DURATION; // Duration for TA signal
+extern const unsigned long WOOD_CAUGHT_CHECK_DELAY_MS; // Delay before checking if wood was caught
 
 // Switch objects
 extern Bounce cutHomingSwitch;
@@ -98,10 +100,13 @@ extern Bounce startCycleSwitch;
 extern bool isReloadMode;
 extern bool woodPresent; // Read in main loop, used in conditions
 extern bool woodSuctionError;
+extern bool wasWoodCaughtError; // New flag for wood caught error
 extern bool errorAcknowledged;
 extern bool cuttingCycleInProgress;
 extern bool continuousModeActive;
 extern bool startSwitchSafe;
+extern bool woodCaughtCheckPending; // Flag to indicate when a wood caught check is scheduled
+extern unsigned long woodCaughtCheckTime; // Time when the wood caught check should occur
 
 // Timers for LEDs/Errors
 extern unsigned long lastBlinkTime;
@@ -151,6 +156,7 @@ void allLedsOff();
 void handleHomingLedBlink();
 void handleErrorLedBlink();
 void handleSuctionErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef);
+void handleWoodCaughtErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef); // New function
 
 //* ************************************************************************
 //* *********************** MOTOR CONTROL FUNCTIONS ************************
@@ -191,5 +197,7 @@ void handleStartSwitchContinuousMode(); // Continuous mode from main loop
 bool shouldStartCycle();
 // Point 4
 void handleServoReturn();
+void scheduleWoodCaughtCheck(); // New function to schedule wood caught check
+void checkWoodCaught(); // New function to check if wood was caught
 
 #endif // FUNCTIONS_H 

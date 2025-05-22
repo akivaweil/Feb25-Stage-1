@@ -56,6 +56,9 @@ const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 1500; // 1 second
 unsigned long catcherClampEngageTime = 0;
 bool catcherClampIsEngaged = false;
 
+// Wood Caught Error Check timing
+const unsigned long WOOD_CAUGHT_CHECK_DELAY_MS = 1000; // 1 second delay to check if wood was caught
+
 // SystemStates Enum is now in Functions.h
 SystemState currentState = STARTUP;
 SystemState previousState = ERROR_RESET; // Initialize to a different state to ensure first print
@@ -127,10 +130,13 @@ bool isHomed = false;
 bool isReloadMode = false;
 bool woodPresent = false;
 bool woodSuctionError = false;
+bool wasWoodCaughtError = false; // New flag for wood caught error
 bool errorAcknowledged = false;
 bool cuttingCycleInProgress = false;
 bool continuousModeActive = false;  // New flag for continuous operation
 bool startSwitchSafe = false;       // New flag to track if start switch is safe
+bool woodCaughtCheckPending = false; // Flag to indicate when a wood caught check is scheduled
+unsigned long woodCaughtCheckTime = 0; // Time when the wood caught check should occur
 
 // Timers for various operations
 unsigned long lastBlinkTime = 0;
@@ -292,6 +298,9 @@ void loop() {
       }
   }
 
+  // Check if wood was caught (if check is pending)
+  checkWoodCaught();
+
   // Handle Catcher Clamp disengagement after 1 second
   if (catcherClampIsEngaged && (millis() - catcherClampEngageTime >= CATCHER_CLAMP_ENGAGE_DURATION_MS)) {
     retractCatcherClamp();
@@ -309,7 +318,8 @@ void loop() {
       case POSITIONING: Serial.println("POSITIONING"); break;
       case ERROR: Serial.println("ERROR"); break;
       case ERROR_RESET: Serial.println("ERROR_RESET"); break;
-      case SUCTION_ERROR_HOLD: Serial.println("SUCTION_ERROR_HOLD"); break; // Added for new state
+      case SUCTION_ERROR_HOLD: Serial.println("SUCTION_ERROR_HOLD"); break;
+      case WAS_WOOD_CAUGHT_ERROR: Serial.println("WAS_WOOD_CAUGHT_ERROR"); break; // Added for new state
       default: Serial.println("UNKNOWN"); break;
     }
     previousState = currentState;
@@ -1107,6 +1117,45 @@ void loop() {
           
           currentState = HOMING;        // Go to HOMING to re-initialize
         }
+      }
+      break;
+
+    //* ************************************************************************
+    //* ********************* WAS_WOOD_CAUGHT_ERROR ***************************
+    //* ************************************************************************
+    // Handles the case where the wood was not properly caught by the catcher.
+    // Step 1: Blink red LED at a moderate pace (once per second).
+    // Step 2: Ensure all other LEDs are off.
+    // Step 3: Ensure position motor is stopped (cut motor continues to home).
+    // Step 4: Wait for cycle switch to be pressed (rising edge) to acknowledge the error.
+    // Step 5: When cycle switch is pressed, transition to HOMING state.
+    case WAS_WOOD_CAUGHT_ERROR:
+      { // Scope for static variables
+        static unsigned long lastWoodCaughtErrorBlinkTime = 0;
+        static bool woodCaughtErrorBlinkState = false;
+
+        // Blink RED_LED once per second
+        handleWoodCaughtErrorLedBlink(lastWoodCaughtErrorBlinkTime, woodCaughtErrorBlinkState);
+
+        // Keep position motor stopped (cut motor continues to home)
+        stopPositionMotor();
+        
+        // Check for cycle switch rising edge (OFF to ON transition)
+        if (startCycleSwitch.rose()) { 
+          Serial.println("Start cycle switch toggled ON. Resetting from wood caught error. Transitioning to HOMING.");
+          turnRedLedOff();   // Turn off error LED explicitly before changing state
+          
+          // Clear error flags
+          wasWoodCaughtError = false;
+          
+          // Reset mode flags
+          continuousModeActive = false; // Ensure continuous mode is off
+          startSwitchSafe = false;      // Require user to cycle switch OFF then ON for a new actual start
+          
+          currentState = HOMING;        // Go to HOMING to re-initialize
+        }
+        
+        Serial.println("Waiting for cycle switch to acknowledge wood caught error.");
       }
       break;
   }

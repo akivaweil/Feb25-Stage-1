@@ -29,6 +29,10 @@ void sendSignalToTA() {
   Serial.print("Servo moved to ");
   Serial.print(SERVO_ACTIVE_POSITION);
   Serial.println(" degrees with TA signal.");
+  
+  // Schedule wood caught check to run 1 second after servo activation
+  scheduleWoodCaughtCheck();
+  Serial.println("Wood caught check scheduled for 1 second after servo activation");
 }
 
 //* ************************************************************************
@@ -421,5 +425,62 @@ void movePositionMotorToYesWoodHome() {
     if (positionMotor) {
         positionMotor->moveTo(0);
         Serial.println("Position motor moving to yes-wood home position (0 inches)");
+    }
+}
+
+//* ************************************************************************
+//* ***************** WOOD CAUGHT ERROR HANDLING FUNCTIONS *****************
+//* ************************************************************************
+
+void handleWoodCaughtErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef) {
+    // Blink RED LED at a moderate pace (once per second)
+    if (millis() - lastBlinkTimeRef >= 1000) {
+        lastBlinkTimeRef = millis();
+        blinkStateRef = !blinkStateRef;
+        if(blinkStateRef) turnRedLedOn(); else turnRedLedOff();
+    }
+    // Ensure other LEDs are off
+    turnYellowLedOff();
+    turnGreenLedOff();
+    turnBlueLedOff();
+}
+
+void scheduleWoodCaughtCheck() {
+    woodCaughtCheckPending = true;
+    woodCaughtCheckTime = millis() + WOOD_CAUGHT_CHECK_DELAY_MS;
+    Serial.println("Wood caught check scheduled for 1 second after servo activation");
+}
+
+void checkWoodCaught() {
+    if (!woodCaughtCheckPending || millis() < woodCaughtCheckTime) {
+        return; // Not time to check yet
+    }
+    
+    // Time to check if wood was caught
+    woodCaughtCheckPending = false;
+    
+    // If WAS_WOOD_SUCTIONED_SENSOR reads HIGH, the wood was not caught properly
+    if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == HIGH) {
+        Serial.println("ERROR: Wood was not caught properly by the catcher!");
+        
+        // Only stop the position motor, let the cut motor finish homing
+        if (positionMotor) positionMotor->forceStopAndNewPosition(positionMotor->getCurrentPosition());
+        
+        // Set error flag
+        wasWoodCaughtError = true;
+        
+        // Reset cycle flags
+        cuttingCycleInProgress = false;
+        
+        // Set LEDs for wood caught error state
+        turnRedLedOn();
+        turnYellowLedOff();
+        turnGreenLedOff();
+        turnBlueLedOff();
+        
+        // Transition to wood caught error state
+        currentState = WAS_WOOD_CAUGHT_ERROR;
+    } else {
+        Serial.println("Wood caught check: Wood was properly caught by the catcher");
     }
 } 
