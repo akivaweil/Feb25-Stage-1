@@ -911,10 +911,18 @@ void loop() {
                       waitingForCylinder = false;
                       cuttingCycleInProgress = false; 
                       currentState = READY;
-                      continuousModeActive = false; 
-                      startSwitchSafe = false;      
+                      continuousModeActive = false;
+                      
+                      // Check if cycle switch is currently ON - if yes, require cycling
+                      if (startCycleSwitch.read() == HIGH) {
+                        startSwitchSafe = false;
+                        Serial.println("Cycle switch is still ON - must be cycled OFF then ON for next cycle.");
+                      } else {
+                        Serial.println("Cycle switch is OFF - ready for next cycle.");
+                      }
+                      
                       cuttingStep = 0; 
-                      Serial.println("No-wood sequence complete. Transitioning to READY state. Continuous mode OFF. Start switch needs cycling."); 
+                      Serial.println("No-wood sequence complete. Transitioning to READY state. Continuous mode OFF."); 
                     }
                     break;
                 }
