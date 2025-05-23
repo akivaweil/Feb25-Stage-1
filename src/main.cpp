@@ -107,7 +107,7 @@ const float POSITION_MOTOR_RETURN_SPEED = 30000;    // Speed for returning to ho
 const float POSITION_MOTOR_RETURN_ACCELERATION = 30000; // Acceleration for return moves (steps/sec^2)
 
 // ! Homing Operation (Homing State)
-const float POSITION_MOTOR_HOMING_SPEED = 4000;     // Speed for homing the position motor (steps/sec)
+const float POSITION_MOTOR_HOMING_SPEED = 2000;     // Speed for homing the position motor (steps/sec)
 // Note: Homing acceleration for position motor, similar to cut motor, often reuses POSITION_MOTOR_NORMAL_ACCELERATION or a specific, lower value.
 
 // Add a timeout constant for cut motor homing
