@@ -1,13 +1,16 @@
-// IMPORTANT NOTE: This file contains the main state machine and setup/loop.
-// It utilizes helper functions defined in 'functions.cpp' (included via 'Functions.h').
 #include <Arduino.h>
 #include <Bounce2.h>
 #include <FastAccelStepper.h>
-#include <esp_system.h> // Include for ESP.restart()
-#include <ESP32Servo.h> // <<< Corrected Servo library include
-#include "OTAUpdater/ota_updater.h" // Include for OTA
-#include "Functions.h" // <<< Corrected include for new functions
-// Remove WiFi and OTA libraries
+#include <esp_system.h>
+#include <ESP32Servo.h>
+#include "OTAUpdater/ota_updater.h"
+#include "Functions.h"
+
+//* ************************************************************************
+//* ************************ AUTOMATED TABLE SAW **************************
+//* ************************************************************************
+// Main control system for Stage 1 of the automated table saw.
+// Handles state machine logic, motor control, sensor monitoring, and safety systems.
 
 // Motor Pin Definitions
 const int CUT_MOTOR_PULSE_PIN = 12;
@@ -29,6 +32,7 @@ const int RELOAD_SWITCH = 6;
 const int START_CYCLE_SWITCH = 5;
 const int WOOD_SENSOR = 10;
 const int WAS_WOOD_SUCTIONED_SENSOR = 39;
+const int FIX_POSITION_BUTTON = 41;
 
 // Clamp Pin Definitions
 const int POSITION_CLAMP = 36;
@@ -38,16 +42,14 @@ const int CATCHER_CLAMP_PIN = 42;
 // Signal pin definition for Transfer Arm
 const int TA_SIGNAL_OUT_PIN = 8;
 
-// LED Pin Definitionss
+// LED Pin Definitions
 const int RED_LED = 47;
 const int YELLOW_LED = 21;
 const int GREEN_LED = 37;
 const int BLUE_LED = 19;
 
-// Servo Sweep Configuration
-// const unsigned long SERVO_SWEEP_INTERVAL_MS = 1000; // Interval for servo sweep // <<< REMOVE
 // Servo timing configuration
-const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS = 2000; // Duration to hold servo at active position
+const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS = 2000;
 unsigned long servoActiveStartTime = 0;
 bool servoIsActiveAndTiming = false;
 
@@ -67,8 +69,8 @@ SystemState previousState = ERROR_RESET; // Initialize to a different state to e
 const int CUT_MOTOR_STEPS_PER_INCH = 500;  // 4x increase from 38
 const int POSITION_MOTOR_STEPS_PER_INCH = 1000; // Restored to original value
 const float CUT_TRAVEL_DISTANCE = 9.0; // inches
-const float POSITION_TRAVEL_DISTANCE = 3.45; // inches
-const float CUT_MOTOR_INCREMENTAL_MOVE_INCHES = 0.05; // Inches for incremental reverse
+const float POSITION_TRAVEL_DISTANCE = 3.4; // inches
+const float CUT_MOTOR_INCREMENTAL_MOVE_INCHES = 0.1; // Inches for incremental reverse
 const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES = 0.4; // Max inches for incremental reverse before error
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = -1;
@@ -101,11 +103,11 @@ const float POSITION_MOTOR_NORMAL_SPEED = 20000;    // Speed for normal position
 const float POSITION_MOTOR_NORMAL_ACCELERATION = 30000; // Acceleration for normal positioning (steps/sec^2)
 
 // ! Return to Home/Start (Returning State / End of Cutting State / Homing after initial move)
-const float POSITION_MOTOR_RETURN_SPEED = 20000;    // Speed for returning to home or start position (steps/sec)
+const float POSITION_MOTOR_RETURN_SPEED = 30000;    // Speed for returning to home or start position (steps/sec)
 const float POSITION_MOTOR_RETURN_ACCELERATION = 30000; // Acceleration for return moves (steps/sec^2)
 
 // ! Homing Operation (Homing State)
-const float POSITION_MOTOR_HOMING_SPEED = 2000;     // Speed for homing the position motor (steps/sec)
+const float POSITION_MOTOR_HOMING_SPEED = 4000;     // Speed for homing the position motor (steps/sec)
 // Note: Homing acceleration for position motor, similar to cut motor, often reuses POSITION_MOTOR_NORMAL_ACCELERATION or a specific, lower value.
 
 // Add a timeout constant for cut motor homing
@@ -117,13 +119,14 @@ FastAccelStepper *cutMotor = NULL;
 FastAccelStepper *positionMotor = NULL;
 
 // Servo object
-Servo servoMotor; // <<< Corrected Servo motor object type
+Servo servoMotor;
 
 // Bounce objects for debouncing switches
 Bounce cutHomingSwitch = Bounce();
 Bounce positionHomingSwitch = Bounce();
 Bounce reloadSwitch = Bounce();
 Bounce startCycleSwitch = Bounce();
+Bounce fixPositionButton = Bounce();
 
 // System flags
 bool isHomed = false;
@@ -158,53 +161,52 @@ const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.0; // New constant
 // New flag to track cut motor return during yes-wood mode
 bool cutMotorInYesWoodReturn = false;
 
+// Global variable for FIX_POSITION state steps
+int fixPositionStep = 0;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Automated Table Saw Control System - Stage 1");
   
-  setupOTA(); // Setup OTA
+  setupOTA();
 
-  // Configure motor pins
+  //! Configure pin modes
   pinMode(CUT_MOTOR_PULSE_PIN, OUTPUT);
   pinMode(CUT_MOTOR_DIR_PIN, OUTPUT);
   pinMode(POSITION_MOTOR_PULSE_PIN, OUTPUT);
   pinMode(POSITION_MOTOR_DIR_PIN, OUTPUT);
   
-  // Configure switch pins - matches the explanation
-  pinMode(CUT_MOTOR_HOMING_SWITCH, INPUT_PULLDOWN);       // Homing switch
-  pinMode(POSITION_MOTOR_HOMING_SWITCH, INPUT_PULLDOWN);  // Homing switch
-  pinMode(RELOAD_SWITCH, INPUT_PULLDOWN);                   // Manual switch with external pull-down, active HIGH
-  pinMode(START_CYCLE_SWITCH, INPUT_PULLDOWN);              // Manual switch with external pull-down, active HIGH
+  pinMode(CUT_MOTOR_HOMING_SWITCH, INPUT_PULLDOWN);
+  pinMode(POSITION_MOTOR_HOMING_SWITCH, INPUT_PULLDOWN);
+  pinMode(RELOAD_SWITCH, INPUT_PULLDOWN);
+  pinMode(START_CYCLE_SWITCH, INPUT_PULLDOWN);
+  pinMode(FIX_POSITION_BUTTON, INPUT_PULLDOWN);
   
-  // Configure sensor pins - make consistent with explanation
-  pinMode(WOOD_SENSOR, INPUT_PULLUP);          // Active LOW (LOW = wood present)
-  pinMode(WAS_WOOD_SUCTIONED_SENSOR, INPUT_PULLUP);          // Active LOW (LOW = wood present)
+  pinMode(WOOD_SENSOR, INPUT_PULLUP);
+  pinMode(WAS_WOOD_SUCTIONED_SENSOR, INPUT_PULLUP);
   
-  // Configure clamp pins - LOW = engaged (extended), HIGH = disengaged (retracted)
   pinMode(POSITION_CLAMP, OUTPUT);
   pinMode(WOOD_SECURE_CLAMP, OUTPUT);
-  extendPositionClamp();  // Start with position clamp engaged
-  extendWoodSecureClamp(); // Start with wood secure clamp engaged
-  
-  // Configure Catcher Clamp Pin
   pinMode(CATCHER_CLAMP_PIN, OUTPUT);
-  retractCatcherClamp(); // Start with Catcher Clamp disengaged (reversed logic: LOW = disengaged)
   
-  // Configure LED pins
   pinMode(RED_LED, OUTPUT);
   pinMode(YELLOW_LED, OUTPUT);
   pinMode(GREEN_LED, OUTPUT);
   pinMode(BLUE_LED, OUTPUT);
   
-  // All LEDs off to start
-  allLedsOff();
+  pinMode(TA_SIGNAL_OUT_PIN, OUTPUT);
+  digitalWrite(TA_SIGNAL_OUT_PIN, LOW);
   
-  // Turn on blue LED during startup
+  //! Initialize clamps and LEDs
+  extendPositionClamp();
+  extendWoodSecureClamp();
+  retractCatcherClamp();
+  allLedsOff();
   turnBlueLedOn();
   
-  // Set up debouncing for switches
+  //! Configure switch debouncing
   cutHomingSwitch.attach(CUT_MOTOR_HOMING_SWITCH);
-  cutHomingSwitch.interval(3);  // 3ms debounce time
+  cutHomingSwitch.interval(3);
   
   positionHomingSwitch.attach(POSITION_MOTOR_HOMING_SWITCH);
   positionHomingSwitch.interval(5);
@@ -215,56 +217,45 @@ void setup() {
   startCycleSwitch.attach(START_CYCLE_SWITCH);
   startCycleSwitch.interval(20);
   
-  // Configure motors
-  engine.init(); // Initialize FastAccelStepper engine
+  fixPositionButton.attach(FIX_POSITION_BUTTON);
+  fixPositionButton.interval(20);
+  
+  //! Initialize motors
+  engine.init();
 
   cutMotor = engine.stepperConnectToPin(CUT_MOTOR_PULSE_PIN);
   if (cutMotor) {
     cutMotor->setDirectionPin(CUT_MOTOR_DIR_PIN);
-    configureCutMotorForCutting(); // Initial configuration
+    configureCutMotorForCutting();
     cutMotor->setCurrentPosition(0);
   } else {
     Serial.println("Failed to init cutMotor");
-    // Potentially handle error, though user instructions limit this
   }
 
   positionMotor = engine.stepperConnectToPin(POSITION_MOTOR_PULSE_PIN);
   if (positionMotor) {
     positionMotor->setDirectionPin(POSITION_MOTOR_DIR_PIN);
-    configurePositionMotorForNormalOperation(); // Initial configuration
+    configurePositionMotorForNormalOperation();
     positionMotor->setCurrentPosition(0);
   } else {
     Serial.println("Failed to init positionMotor");
-    // Potentially handle error
   }
   
-  // Initially set motors to use position 0
-  // cutMotor.setCurrentPosition(0); // Done above
-  // positionMotor.setCurrentPosition(0); // Done above
+  //! Initialize servo
+  servoMotor.setTimerWidth(14);
+  servoMotor.attach(SERVO_PIN);
   
-  // Initialize signal pin
-  pinMode(TA_SIGNAL_OUT_PIN, OUTPUT);
-  digitalWrite(TA_SIGNAL_OUT_PIN, LOW); // Start with TA signal inactive (LOW)
-  
-  // Start in STARTUP state
+  //! Configure initial state
   currentState = STARTUP;
   
-  // Check if start switch is already ON at startup
   startCycleSwitch.update();
   if (startCycleSwitch.read() == HIGH) {
     startSwitchSafe = false;
-    // Serial.println("WARNING: Start switch is ON during startup. Turn it OFF before operation.");
   } else {
     startSwitchSafe = true;
   }
   
-  // Serial.println("System initialized, ready to begin homing sequence");
-  delay(10);  // Brief delay before starting homing
-
-  // Attach and initialize servo
-  servoMotor.setTimerWidth(14); // Set timer width to 14 bits for ESP32-S3 compatibility
-  servoMotor.attach(SERVO_PIN); // Reverted to original attach method
-  // Initial servo position set via function call instead of direct control
+  delay(10);
 }
 
 void loop() {
@@ -275,6 +266,7 @@ void loop() {
   positionHomingSwitch.update();
   reloadSwitch.update();
   startCycleSwitch.update();
+  fixPositionButton.update();
   
   // Check for cut motor hitting home sensor during yes-wood return
   if (cutMotorInYesWoodReturn && cutMotor && cutMotor->isRunning() && cutHomingSwitch.read() == HIGH) {
@@ -320,6 +312,7 @@ void loop() {
       case ERROR_RESET: Serial.println("ERROR_RESET"); break;
       case SUCTION_ERROR_HOLD: Serial.println("SUCTION_ERROR_HOLD"); break;
       case WAS_WOOD_CAUGHT_ERROR: Serial.println("WAS_WOOD_CAUGHT_ERROR"); break; // Added for new state
+      case FIX_POSITION: Serial.println("FIX_POSITION"); break;
       default: Serial.println("UNKNOWN"); break;
     }
     previousState = currentState;
@@ -330,9 +323,7 @@ void loop() {
   
   // Handle start switch safety check
   if (!startSwitchSafe && startCycleSwitch.fell()) {
-    // Start switch was turned OFF after being ON during startup
     startSwitchSafe = true;
-    // Serial.println("Start switch is now safe to use");
   }
   
   // Handle the reload switch state when in READY state
@@ -346,14 +337,12 @@ void loop() {
       retractPositionClamp(); // Disengage position clamp
       retractWoodSecureClamp(); // Disengage wood secure clamp
       turnBlueLedOn();     // Turn on blue LED for reload mode
-      // Serial.println("Entered reload mode");
     } else if (!reloadSwitchOn && isReloadMode) {
       // Exit reload mode
       isReloadMode = false;
       extendPositionClamp();   // Re-engage position clamp
       extendWoodSecureClamp(); // Re-engage wood secure clamp
       turnBlueLedOff();       // Turn off blue LED
-      // Serial.println("Exited reload mode, ready for operation");
     }
   }
   
@@ -368,9 +357,6 @@ void loop() {
   if (startSwitchOn != continuousModeActive && startSwitchSafe) {
     continuousModeActive = startSwitchOn;
     if (continuousModeActive) {
-      // Serial.println("Continuous operation mode activated");
-    } else {
-      // Serial.println("Continuous operation mode deactivated");
     }
   }
   
@@ -379,6 +365,15 @@ void loop() {
     digitalWrite(TA_SIGNAL_OUT_PIN, LOW); // Return to inactive state (LOW)
     signalTAActive = false;
     Serial.println("Signal to Stage 1 to TA completed");
+  }
+  
+  // Check for fix position button press
+  if (fixPositionButton.rose() && currentState == READY) {
+    currentState = FIX_POSITION;
+    fixPositionStep = 0; // Reset step
+    allLedsOff();
+    turnBlueLedOn(); // Indicate FIX_POSITION active
+    Serial.println("FIX_POSITION button pressed in READY state. Entering FIX_POSITION state.");
   }
   
   // State machine
@@ -390,7 +385,6 @@ void loop() {
     // Step 1: Turn on the blue LED to indicate startup/homing.
     // Step 2: Transition to the HOMING state.
     case STARTUP:
-      // Serial.println("Current State: STARTUP"); // Removed
       turnBlueLedOn();  // Blue LED on during startup/homing
       currentState = HOMING;
       break;
@@ -408,7 +402,6 @@ void loop() {
     // Step 7: Ensure servo is at 2 degrees.
     // Step 8: Transition to READY state.
     case HOMING:
-      // Serial.println("Current State: HOMING"); // Removed
       { // Scope for static variables from performHomingSequence
         static bool cutMotorHomed = false;
         static bool positionMotorHomed = false;
@@ -428,8 +421,6 @@ void loop() {
           cutMotorHomed = true;
           } else {
             Serial.println("Cut motor homing failed or timed out. Retrying or error.");
-            // currentState = ERROR; // Or some other logic
-            // For now, we'll let it try again in the next loop or get stuck if switch not pressed
           }
         } else if (!positionMotorHomed) {
           static bool positionHomingPhaseInitiated = false;
@@ -485,55 +476,24 @@ void loop() {
     //           - Ensure position and wood secure clamps are engaged.
     //           - If no wood is detected, turn on blue LED for no-wood mode indication.
     case READY:
-      // System is ready for operation
       if (!isReloadMode) {
-        // Solid green LED to indicate ready
         turnGreenLedOn();
-
-        // Servo sweep logic for testing // <<< REMOVE BLOCK START
-        // static int servoTargetAngle = 75;
-        // static unsigned long lastServoMoveTime = 0;
-
-        // if (millis() - lastServoMoveTime >= SERVO_SWEEP_INTERVAL_MS) {
-        //   lastServoMoveTime = millis();
-        //   if (servoTargetAngle == 75) {
-        //     servoTargetAngle = 45;
-        //   } else {
-        //     servoTargetAngle = 75;
-        //   }
-        //   servoMotor.write(servoTargetAngle);
-        //   Serial.print("Servo moved to: ");
-        //   Serial.println(servoTargetAngle);
-        // } // <<< REMOVE BLOCK END
-        // Servo is managed by setup/homing and the signal timing logic
         
-        // Start a new cycle if:
-        // 1. Start switch was just flipped ON (rising edge), OR
-        // 2. Continuous mode is active AND we're not already in a cutting cycle
-        // AND the start switch is safe to use
         if (((startCycleSwitch.rose() || (continuousModeActive && !cuttingCycleInProgress)) 
             && !woodSuctionError) && startSwitchSafe) {
-          // Serial.println("Starting cutting cycle");
-          // Turn off ready LED, turn on busy LED
           turnGreenLedOff();
           turnYellowLedOn();
-          turnBlueLedOff();  // Ensure blue LED is off at start of cutting cycle
+          turnBlueLedOff();
           
-          // Set flag to indicate cycle in progress
           cuttingCycleInProgress = true;
-          
-          // Always enter cutting state, regardless of wood presence
           currentState = CUTTING;
-          // Configure cut motor for cutting speed - change back to normal speed
           configureCutMotorForCutting();
-          // Ensure clamps are engaged
+          
           extendPositionClamp();
           extendWoodSecureClamp();
           
-          // Store wood presence for later use
           if (!woodPresent) {
-            // Serial.println("No wood detected, will enter no-wood mode after cut");
-            turnBlueLedOn(); // Blue LED on for no-wood mode
+            turnBlueLedOn();
           }
         }
       }
@@ -578,7 +538,7 @@ void loop() {
     // Step 7: Handles completion of Yes-Wood Sequence (initiated in Step 2 when wood is detected after cut).
     //          - This step activates after both cut and position motors (which were commanded to return home simultaneously) have stopped.
     //          - Sub-step 7.1: Retract position clamp.
-    //          - Sub-step 7.2: Check cut motor homing switch (multiple attempts). 
+    //          - Sub-step 7.2: Check cut motor homing switch. 
     //            - If detected: Recalibrate cut motor position to 0. Proceed to Sub-step 7.3.
     //            - If NOT detected: Transition to ERROR state (cut motor homing failure). Includes stopping motors, engaging clamps, setting error LEDs.
     //          - Sub-step 7.3: If home was successfully detected in Sub-step 7.2, retract wood secure clamp.
@@ -597,6 +557,7 @@ void loop() {
         static bool homePositionErrorDetected = false; // From performCuttingOperation
         static bool catcherClampActivatedThisCycle = false; // <<< NEW
         static float cutMotorIncrementalMoveTotalInches = 0.0; // For incremental homing
+        static int cuttingSubStep7 = 0; // <<< NEW SUB-STEP FOR CUTTING STEP 7
         
         // Static variables from performNoWoodOperation, to be used within cuttingStep 6
         static int noWoodStep = 0; // Renamed from noWoodStage
@@ -625,7 +586,6 @@ void loop() {
             errorAcknowledged = true; // Assuming errorAcknowledged is global
             Serial.println("Home position error acknowledged by reload switch."); 
           }
-          // return; // This would exit the loop iteration
         } else { // Moved the main switch block inside this else
             // Handle signal timing independently of motor movements (from performCuttingOperation)
             // Note: This was outside the switch in the original function, might need adjustment if `return` was hit.
@@ -692,12 +652,9 @@ void loop() {
                 if (noWoodDetected) {
                   Serial.println("Cutting Step 2: No wood detected after cut. Entering No-Wood Sequence (handled in cuttingStep 6).");
                   // Inlining performNoWoodOperation logic:
-                  // Serial.println("Entering performNoWoodOperation function (inlined)."); // <<< Keep this commented or remove
                   configureCutMotorForReturn();
                   moveCutMotorToHome();
-                  // Serial.println("performNoWoodOperation (inlined): Cut motor set to return to home (with minimal overshoot)."); // <<< Keep this commented or remove
                   configurePositionMotorForNormalOperation();
-                  // Serial.println("performNoWoodOperation (inlined): Configuration complete. Sequence handled in cuttingStep 6."); // <<< Keep this commented or remove
                   // End of inlined performNoWoodOperation setup part. Actual sequence is in case 6.
                   cuttingStep = 6; // Renamed from cuttingStage
                 } else {
@@ -714,6 +671,7 @@ void loop() {
                   movePositionMotorToYesWoodHome();  // Changed from movePositionMotorToHome()
                   
                   cuttingStep = 7; // Renamed from cuttingStage
+                  cuttingSubStep7 = 0; // Reset sub-step for case 7
                 }
               }
               break;
@@ -805,7 +763,6 @@ void loop() {
               if (noWoodStep == 0) { // First time entering this specific no-wood logic path
                 Serial.println("No-Wood Step 6.0: Initiating position motor to home & retracting wood secure clamp.");
                 retractWoodSecureClamp();
-                // configurePositionMotorForNormalOperation(); // Already done in cuttingStep 2
                 if (positionMotor) {
                     if (positionMotor->getCurrentPosition() != 0 || positionMotor->isRunning()) { // Corrected condition
                         positionMotor->moveTo(0);
@@ -931,57 +888,65 @@ void loop() {
 
             case 7: 
               // This step handles the completion of the "Yes-Wood Sequence".
-              // It activates after both the cut motor and position motor have completed their simultaneous return to home (initiated in cuttingStep 2).
-              if (cutMotor && !cutMotor->isRunning() && positionMotor && !positionMotor->isRunning()) {
-                Serial.println("Cutting Step 7: Both cut and position motors have returned home.");
-                
-                // Clear the yes-wood return flag since motors have stopped
-                cutMotorInYesWoodReturn = false;
-                
-                // Sub-step 7.1: Engage the position clamp to secure the (assumed) wood.
-                extendPositionClamp(); 
-                Serial.println("Position clamp engaged.");
-
-                // Sub-step 7.2: Check the cut motor homing switch. If not detected, transition to ERROR.
-                bool sensorDetectedHome = false;
-                Serial.println("Checking cut motor position switch after simultaneous return.");
-                for (int i = 0; i < 3; i++) { 
-                  delay(30);  
-                  cutHomingSwitch.update();
-                  Serial.print("Cut position switch read attempt "); Serial.print(i+1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
-                  if (cutHomingSwitch.read() == HIGH) {
-                    sensorDetectedHome = true;
-                    if (cutMotor) cutMotor->setCurrentPosition(0); 
-                    Serial.println("Cut motor position switch detected HIGH. Position recalibrated to 0.");
-                    break; 
+              // Position clamp engages as soon as position motor is home. Cut motor homing is checked after cut motor is home.
+              switch (cuttingSubStep7) {
+                case 0: // Wait for position motor to home
+                  if (positionMotor && !positionMotor->isRunning()) {
+                    Serial.println("Cutting Step 7.0: Position motor has returned home. Engaging position clamp.");
+                    extendPositionClamp();
+                    Serial.println("Position clamp engaged (position motor home).");
+                    cuttingSubStep7 = 1;
                   }
-                }
+                  break;
 
-                if (!sensorDetectedHome) {
-                  // Homing failed, transition to ERROR state.
-                  Serial.println("ERROR: Cut motor position switch did not detect home after simultaneous return!");
-                  stopCutMotor();
-                  stopPositionMotor();
-                  cutMotorInYesWoodReturn = false; // Clear flag on error too
-                  extendPositionClamp(); 
-                  extendWoodSecureClamp(); 
-                  turnRedLedOn();
-                  turnYellowLedOff(); 
-                  currentState = ERROR;
-                  errorStartTime = millis(); 
-                  cuttingStep = 0;
-                } else {
-                  // Homing successful, proceed with next steps.
-                  // Sub-step 7.3: Retract the wood secure clamp.
-                  retractWoodSecureClamp();
-                  Serial.println("Wood secure clamp retracted after successful cut motor home detection.");
+                case 1: // Wait for cut motor to home, then proceed with original logic
+                  if (cutMotor && !cutMotor->isRunning()) {
+                    Serial.println("Cutting Step 7.1: Cut motor has returned home.");
+                    // Clear the yes-wood return flag since cut motor has stopped (position motor already stopped)
+                    cutMotorInYesWoodReturn = false;
 
-                  // Sub-step 7.4: Move position motor to final travel position.
-                  Serial.println("Cut motor position switch confirmed home. Proceeding to move position motor to final travel position.");
-                  configurePositionMotorForNormalOperation();
-                  movePositionMotorToPosition(POSITION_TRAVEL_DISTANCE);
-                  cuttingStep = 5; 
-                }
+                    // Original logic: Check the cut motor homing switch. If not detected, transition to ERROR.
+                    bool sensorDetectedHome = false;
+                    Serial.println("Checking cut motor position switch after simultaneous return.");
+                    for (int i = 0; i < 3; i++) { 
+                      delay(30);  
+                      cutHomingSwitch.update();
+                      Serial.print("Cut position switch read attempt "); Serial.print(i+1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
+                      if (cutHomingSwitch.read() == HIGH) {
+                        sensorDetectedHome = true;
+                        if (cutMotor) cutMotor->setCurrentPosition(0); 
+                        Serial.println("Cut motor position switch detected HIGH. Position recalibrated to 0.");
+                        break; 
+                      }
+                    }
+
+                    if (!sensorDetectedHome) {
+                      // Homing failed, transition to ERROR state.
+                      Serial.println("ERROR: Cut motor position switch did not detect home after simultaneous return!");
+                      stopCutMotor();
+                      // positionMotor is already stopped
+                      extendWoodSecureClamp(); 
+                      turnRedLedOn();
+                      turnYellowLedOff(); 
+                      currentState = ERROR;
+                      errorStartTime = millis(); 
+                      cuttingStep = 0; // Reset main cutting step
+                      cuttingSubStep7 = 0; // Reset sub-step
+                    } else {
+                      // Homing successful, proceed with next steps.
+                      // Original logic: Retract the wood secure clamp.
+                      retractWoodSecureClamp();
+                      Serial.println("Wood secure clamp retracted after successful cut motor home detection.");
+
+                      // Original logic: Move position motor to final travel position.
+                      Serial.println("Cut motor position switch confirmed home. Proceeding to move position motor to final travel position.");
+                      configurePositionMotorForNormalOperation();
+                      movePositionMotorToPosition(POSITION_TRAVEL_DISTANCE);
+                      cuttingStep = 5; // Transition to original cuttingStep 5
+                      cuttingSubStep7 = 0; // Reset sub-step
+                    }
+                  }
+                  break;
               }
               break;
             } // End of cuttingStep switch // Renamed from cuttingStage
@@ -999,7 +964,6 @@ void loop() {
     // Step 2: Turn off yellow LED.
     // Step 3: Reset cuttingCycleInProgress flag.
     case RETURNING:
-      Serial.println("Current State: RETURNING");
       // performReturnOperation(); // Will be replaced by inlined code
       // This function is no longer needed as the return operation is now handled
       // directly in the performCuttingOperation function (now inlined in case CUTTING)
@@ -1020,7 +984,6 @@ void loop() {
     // Step 2: Turn off yellow LED.
     // Step 3: Reset cuttingCycleInProgress flag.
     case POSITIONING:
-      Serial.println("Current State: POSITIONING");
       // performPositioningOperation(); // Will be replaced by inlined code
       // This function is no longer needed as the positioning operation is now handled
       // directly in the performCuttingOperation function (now inlined in case CUTTING)
@@ -1040,7 +1003,6 @@ void loop() {
     // Step 3: Wait for the reload switch to be pressed (rising edge) to acknowledge the error.
     // Step 4: Once error is acknowledged, transition to ERROR_RESET state.
     case ERROR:
-      Serial.println("Current State: ERROR");
       // handleErrorState(); // Will be replaced by inlined code
       Serial.println("Entering handleErrorState (inlined)."); 
       // Blink error LEDs
@@ -1070,7 +1032,6 @@ void loop() {
     // Step 2: Reset errorAcknowledged and woodSuctionError flags.
     // Step 3: Transition to STARTUP state to re-initialize the system (which will lead to HOMING).
     case ERROR_RESET:
-      Serial.println("Current State: ERROR_RESET");
       // resetFromError(); // Will be replaced by inlined code
       Serial.println("Entering resetFromError (inlined)."); 
       // Turn off error LEDs
@@ -1165,6 +1126,112 @@ void loop() {
         
         Serial.println("Waiting for cycle switch to acknowledge wood caught error.");
       }
+      break;
+
+    //* ************************************************************************
+    //* ************************* FIX POSITION *******************************
+    //* ************************************************************************
+    // Handles the fix position state.
+    // Step 0: Extend position clamp, start 100ms timer.
+    // Step 1: After 100ms, retract clamps, start homing cut and position motors (to 0).
+    // Step 2: After motors home, engage position clamp, check cut motor sensor. If OK, move position motor to final.
+    // Step 3: After position motor reaches final, engage wood secure clamp, return to READY.
+    case FIX_POSITION:
+      { // Scope for static timer
+        static unsigned long step0Timer_fixPosition = 0; 
+        static int fixPositionSubStep2 = 0; // <<< NEW SUB-STEP FOR FIX_POSITION STEP 2
+        // Serial.print("Current State: FIX_POSITION, Step: "); Serial.println(fixPositionStep);
+
+        switch (fixPositionStep) {
+          case 0: // Initial action: extend position clamp and wait 100ms
+            Serial.println("FIX_POSITION Step 0: Extending position clamp.");
+            extendPositionClamp();
+            step0Timer_fixPosition = millis();
+            fixPositionStep = 1;
+            break;
+
+          case 1: // Wait for 100ms, then start the "yes-wood like" homing sequence
+            if (millis() - step0Timer_fixPosition >= 100) {
+              Serial.println("FIX_POSITION Step 1: Position clamp extended. Starting homing part of sequence.");
+              retractPositionClamp(); 
+              retractWoodSecureClamp(); 
+
+              configurePositionMotorForReturn();
+              configureCutMotorForReturn();      
+
+              moveCutMotorToHome();
+              movePositionMotorToYesWoodHome(); // Moves to 0
+              cutMotorInYesWoodReturn = true; // Enable check for cut motor hitting home switch during move
+              fixPositionStep = 2;
+              fixPositionSubStep2 = 0; // Reset sub-step for case 2
+            }
+            break;
+
+          case 2: // Wait for motors to reach home (position motor first, then cut)
+            switch (fixPositionSubStep2) {
+              case 0: // Wait for position motor to home
+                if (positionMotor && !positionMotor->isRunning()) {
+                  Serial.println("FIX_POSITION Step 2.0: Position motor at home. Engaging position clamp.");
+                  extendPositionClamp();
+                  fixPositionSubStep2 = 1;
+                }
+                break;
+              
+              case 1: // Wait for cut motor to home, then check sensor
+                if (cutMotor && !cutMotor->isRunning()) {
+                  Serial.println("FIX_POSITION Step 2.1: Cut motor at home. Checking cut motor sensor.");
+                  cutMotorInYesWoodReturn = false; // Disable special check now that motor has stopped
+
+                  bool sensorDetectedHome = false;
+                  for (int i = 0; i < 3; i++) {
+                    delay(30); 
+                    cutHomingSwitch.update();
+                    if (cutHomingSwitch.read() == HIGH) {
+                      sensorDetectedHome = true;
+                      if (cutMotor) cutMotor->setCurrentPosition(0);
+                      Serial.println("FIX_POSITION Step 2.1: Cut motor home switch DETECTED.");
+                      break;
+                    }
+                    Serial.println("FIX_POSITION Step 2.1: Cut motor home switch read attempt, still LOW.");
+                  }
+
+                  if (!sensorDetectedHome) {
+                    Serial.println("FIX_POSITION Step 2.1 ERROR: Cut motor home switch NOT detected. Transitioning to ERROR.");
+                    stopCutMotor();
+                    // positionMotor already stopped
+                    allLedsOff();
+                    turnRedLedOn();
+                    turnYellowLedOn(); 
+                    currentState = ERROR;
+                    errorStartTime = millis(); 
+                    fixPositionStep = 0; // Reset main fix position step
+                    fixPositionSubStep2 = 0; // Reset sub-step
+                  } else {
+                    Serial.println("FIX_POSITION Step 2.1: Cut motor home confirmed. Retracting wood secure, moving position motor to final.");
+                    retractWoodSecureClamp(); // Ensure wood secure clamp is retracted before final positioning
+                    configurePositionMotorForNormalOperation();
+                    movePositionMotorToPosition(POSITION_TRAVEL_DISTANCE);
+                    fixPositionStep = 3;
+                    fixPositionSubStep2 = 0; // Reset sub-step
+                  }
+                }
+                break;
+            }
+            break;
+
+          case 3: // Wait for position motor to reach POSITION_TRAVEL_DISTANCE
+            if (positionMotor && !positionMotor->isRunning()) {
+              Serial.println("FIX_POSITION Step 3: Position motor at final travel distance. Engaging wood secure clamp.");
+              extendWoodSecureClamp();
+              Serial.println("FIX_POSITION: Sequence complete. Returning to READY.");
+              allLedsOff(); 
+              turnGreenLedOn();
+              currentState = READY;
+              fixPositionStep = 0; // Reset for next time
+            }
+            break;
+        }
+      } // End scope for static timer
       break;
   }
   

@@ -3,10 +3,10 @@
 #include "Functions.h"
 
 //* ************************************************************************
-//* *********************** FUNCTION DEFINITIONS *************************
+//* *********************** HELPER FUNCTIONS ******************************
 //* ************************************************************************
-// This file contains helper functions for clamp control, LED control,
-// inter-stage signaling, and motor control.
+// Helper functions for clamp control, LED control, inter-stage signaling,
+// and motor control used by the main Stage 1 control system.
 
 // Note: Pin definitions, global servo variables, motor objects, and related constants
 // are declared as 'extern' in functions.h and defined in the main .cpp file.
@@ -29,10 +29,6 @@ void sendSignalToTA() {
   Serial.print("Servo moved to ");
   Serial.print(SERVO_ACTIVE_POSITION);
   Serial.println(" degrees with TA signal.");
-  
-  // Schedule wood caught check to run 1 second after servo activation
-  scheduleWoodCaughtCheck();
-  Serial.println("Wood caught check scheduled for 1 second after servo activation");
 }
 
 //* ************************************************************************
@@ -139,9 +135,8 @@ void allLedsOff() {
     turnBlueLedOff();
 }
 
-// Point 1: LED Blinking Logic
 void handleHomingLedBlink() {
-    static unsigned long blinkTimer = 0; // Retain static for independent timing
+    static unsigned long blinkTimer = 0;
     if (millis() - blinkTimer > 500) {
         blinkState = !blinkState;
         if (blinkState) turnBlueLedOn(); else turnBlueLedOff();
@@ -150,25 +145,20 @@ void handleHomingLedBlink() {
 }
 
 void handleErrorLedBlink() {
-    if (millis() - lastErrorBlinkTime > 250) { // lastErrorBlinkTime is global
-        errorBlinkState = !errorBlinkState; // errorBlinkState is global
+    if (millis() - lastErrorBlinkTime > 250) {
+        errorBlinkState = !errorBlinkState;
         if(errorBlinkState) turnRedLedOn(); else turnRedLedOff();
         if(!errorBlinkState) turnYellowLedOn(); else turnYellowLedOff();
         lastErrorBlinkTime = millis();
     }
 }
 
-// Note: For SUCTION_ERROR_HOLD, the local static variables were moved to global
-// or passed as references if they need to be unique to that state's instance of blinking.
-// For this refactor, assuming lastSuctionErrorBlinkTime and suctionErrorBlinkState
-// were intended to be specific to the SUCTION_ERROR_HOLD state, they are passed by reference.
 void handleSuctionErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef) {
     if (millis() - lastBlinkTimeRef >= 1500) {
         lastBlinkTimeRef = millis();
         blinkStateRef = !blinkStateRef;
         if(blinkStateRef) turnRedLedOn(); else turnRedLedOff();
     }
-    // Ensure other LEDs are off
     turnYellowLedOff();
     turnGreenLedOff();
     turnBlueLedOff();
@@ -188,7 +178,7 @@ void configureCutMotorForCutting() {
 void configureCutMotorForReturn() {
     if (cutMotor) {
         cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_RETURN_SPEED);
-        cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION); // Assuming same acceleration for return for now
+        cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION);
     }
 }
 
@@ -253,7 +243,7 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
     if (!cutMotor) return;
     unsigned long startTime = millis();
     cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_HOMING_SPEED);
-    cutMotor->moveTo(-40000); // Large move towards switch
+    cutMotor->moveTo(-40000);
 
     while (homingSwitch.read() != HIGH) {
         homingSwitch.update();
@@ -262,7 +252,6 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
             cutMotor->stopMove();
             return;
         }
-        // Yield for other tasks, important in blocking loops
     }
     cutMotor->stopMove();
     cutMotor->setCurrentPosition(0);
@@ -273,22 +262,21 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
 void homePositionMotorBlocking(Bounce& homingSwitch) {
     if (!positionMotor) return;
     positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_HOMING_SPEED);
-    positionMotor->moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH); // Large move towards switch
+    positionMotor->moveTo(-10000 * POSITION_MOTOR_STEPS_PER_INCH);
 
     while (homingSwitch.read() != HIGH) {
         homingSwitch.update();
     }
     positionMotor->stopMove();
-    positionMotor->setCurrentPosition(-1 * POSITION_MOTOR_STEPS_PER_INCH); // Offset
+    positionMotor->setCurrentPosition(-2 * POSITION_MOTOR_STEPS_PER_INCH);
     Serial.println("Position motor homed.");
-    configurePositionMotorForNormalOperation(); // Prepare for next move
+    configurePositionMotorForNormalOperation();
 }
 
 void movePositionMotorToInitialAfterHoming() {
     if (positionMotor) {
         configurePositionMotorForNormalOperation();
-        movePositionMotorToTravel(); // Moves to POSITION_TRAVEL_DISTANCE
-        // Wait for move completion (blocking for simplicity, can be non-blocking)
+        movePositionMotorToTravel();
         while(positionMotor->isRunning()){
         }
     }
@@ -298,7 +286,7 @@ void movePositionMotorToInitialAfterHoming() {
 // Checks the cut motor homing switch multiple times and recalibrates if detected.
 // Returns true if home detected and recalibrated, false otherwise.
 bool checkAndRecalibrateCutMotorHome(int attempts) {
-    if (!cutMotor) return false; // Should not happen if motor is initialized
+    if (!cutMotor) return false;
 
     bool sensorDetectedHome = false;
     for (int i = 0; i < attempts; i++) {
@@ -306,7 +294,7 @@ bool checkAndRecalibrateCutMotorHome(int attempts) {
         Serial.print("Cut position switch read attempt "); Serial.print(i + 1); Serial.print(": "); Serial.println(cutHomingSwitch.read());
         if (cutHomingSwitch.read() == HIGH) {
             sensorDetectedHome = true;
-            cutMotor->setCurrentPosition(0); // Recalibrate to 0 when switch is hit
+            cutMotor->setCurrentPosition(0);
             Serial.println("Cut motor position switch detected HIGH. Position recalibrated to 0.");
             break;
         }
@@ -320,7 +308,7 @@ bool checkAndRecalibrateCutMotorHome(int attempts) {
 // Point 2: Switch handling
 
 void handleReloadMode() {
-    if (currentState == READY) { // Only applicable in READY state
+    if (currentState == READY) {
         bool reloadSwitchOn = reloadSwitch.read() == HIGH;
         if (reloadSwitchOn && !isReloadMode) {
             isReloadMode = true;
@@ -430,57 +418,26 @@ void movePositionMotorToYesWoodHome() {
 
 //* ************************************************************************
 //* ***************** WOOD CAUGHT ERROR HANDLING FUNCTIONS *****************
-//* ************************************************************************
-
-void handleWoodCaughtErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef) {
-    // Blink RED LED at a moderate pace (once per second)
-    if (millis() - lastBlinkTimeRef >= 1000) {
-        lastBlinkTimeRef = millis();
-        blinkStateRef = !blinkStateRef;
-        if(blinkStateRef) turnRedLedOn(); else turnRedLedOff();
-    }
-    // Ensure other LEDs are off
-    turnYellowLedOff();
-    turnGreenLedOff();
-    turnBlueLedOff();
-}
-
-void scheduleWoodCaughtCheck() {
-    woodCaughtCheckPending = true;
-    woodCaughtCheckTime = millis() + WOOD_CAUGHT_CHECK_DELAY_MS;
-    Serial.println("Wood caught check scheduled for 1 second after servo activation");
-}
 
 void checkWoodCaught() {
-    if (!woodCaughtCheckPending || millis() < woodCaughtCheckTime) {
-        return; // Not time to check yet
-    }
-    
-    // Time to check if wood was caught
-    woodCaughtCheckPending = false;
-    
-    // If WAS_WOOD_SUCTIONED_SENSOR reads HIGH, the wood was not caught properly
-    if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == HIGH) {
-        Serial.println("ERROR: Wood was not caught properly by the catcher!");
-        
-        // Only stop the position motor, let the cut motor finish homing
-        if (positionMotor) positionMotor->forceStopAndNewPosition(positionMotor->getCurrentPosition());
-        
-        // Set error flag
-        wasWoodCaughtError = true;
-        
-        // Reset cycle flags
-        cuttingCycleInProgress = false;
-        
-        // Set LEDs for wood caught error state
-        turnRedLedOn();
-        turnYellowLedOff();
-        turnGreenLedOff();
-        turnBlueLedOff();
-        
-        // Transition to wood caught error state
-        currentState = WAS_WOOD_CAUGHT_ERROR;
-    } else {
-        Serial.println("Wood caught check: Wood was properly caught by the catcher");
-    }
-} 
+  // Placeholder - Implement logic if woodCaughtCheckPending is true
+  if (woodCaughtCheckPending && millis() >= woodCaughtCheckTime) {
+    Serial.println("Placeholder: checkWoodCaught() called.");
+    // Actual logic to check sensor and set wasWoodCaughtError would go here.
+    // For now, just clear the pending flag.
+    woodCaughtCheckPending = false; 
+  }
+}
+
+void handleWoodCaughtErrorLedBlink(unsigned long& lastBlinkTimeRef, bool& blinkStateRef) {
+  // Placeholder - Implement blinking logic for wood caught error
+  if (millis() - lastBlinkTimeRef >= 1000) { // Blink RED once per second
+    lastBlinkTimeRef = millis();
+    blinkStateRef = !blinkStateRef;
+    if(blinkStateRef) digitalWrite(RED_LED, HIGH); else digitalWrite(RED_LED, LOW);
+    digitalWrite(YELLOW_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+  }
+  Serial.println("Placeholder: handleWoodCaughtErrorLedBlink() called.");
+}

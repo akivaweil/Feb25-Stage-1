@@ -6,6 +6,12 @@
 #include <FastAccelStepper.h> // For FastAccelStepper objects
 #include <Bounce2.h> // <<< ADDED for Bounce type
 
+//* ************************************************************************
+//* ************************* FUNCTIONS HEADER *****************************
+//* ************************************************************************
+// Header file containing function prototypes and extern declarations
+// for the Stage 1 automated table saw control system.
+
 class Bounce; // Forward declaration for linter
 
 // System States Enum Definition
@@ -19,15 +25,11 @@ enum SystemState {
   ERROR,
   ERROR_RESET,
   SUCTION_ERROR_HOLD,
-  WAS_WOOD_CAUGHT_ERROR // New state for wood caught error
+  WAS_WOOD_CAUGHT_ERROR,
+  FIX_POSITION
 };
 
-// Include the main cpp file for Pin Definitions. This is a workaround.
-// A better solution is to convert #defines to const int variables.
-// #include "../src/Stage 1 Feb25.cpp" // This is problematic, causes redefinitions.
-
-// Extern declarations for Pin Definitions from "Stage 1 Feb25.cpp"
-// These will be defined in Stage 1 Feb25.cpp as const int
+// Extern declarations for Pin Definitions
 extern const int CUT_MOTOR_PULSE_PIN;
 extern const int CUT_MOTOR_DIR_PIN;
 extern const int POSITION_MOTOR_PULSE_PIN;
@@ -42,7 +44,7 @@ extern const int WAS_WOOD_SUCTIONED_SENSOR;
 extern const int POSITION_CLAMP;
 extern const int WOOD_SECURE_CLAMP;
 extern const int CATCHER_CLAMP_PIN;
-extern const int TA_SIGNAL_OUT_PIN; // Signal to Transfer Arm
+extern const int TA_SIGNAL_OUT_PIN;
 extern const int RED_LED;
 extern const int YELLOW_LED;
 extern const int GREEN_LED;
