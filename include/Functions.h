@@ -34,7 +34,6 @@ extern const int CUT_MOTOR_PULSE_PIN;
 extern const int CUT_MOTOR_DIR_PIN;
 extern const int POSITION_MOTOR_PULSE_PIN;
 extern const int POSITION_MOTOR_DIR_PIN;
-extern const int SERVO_PIN;
 extern const int CUT_MOTOR_HOMING_SWITCH;
 extern const int POSITION_MOTOR_HOMING_SWITCH;
 extern const int RELOAD_SWITCH;
@@ -50,15 +49,18 @@ extern const int YELLOW_LED;
 extern const int GREEN_LED;
 extern const int BLUE_LED;
 
-// Extern declarations for servo position constants
-extern const int SERVO_HOME_POSITION;
-extern const int SERVO_ACTIVE_POSITION;
+// Extern declarations for catcher servo pin
+extern const int CATCHER_SERVO_PIN;
+
+// Extern declarations for catcher servo position constants
+extern const int CATCHER_SERVO_HOME_POSITION;
+extern const int CATCHER_SERVO_ACTIVE_POSITION;
 
 // Extern declarations for global variables from "Stage 1 Feb25.cpp"
 extern SystemState currentState;
-extern Servo servoMotor;
-extern unsigned long servoActiveStartTime;
-extern bool servoIsActiveAndTiming;
+extern Servo catcherServo;
+extern unsigned long catcherServoActiveStartTime;
+extern bool catcherServoIsActiveAndTiming;
 extern unsigned long catcherClampEngageTime;
 extern bool catcherClampIsEngaged;
 extern unsigned long signalTAStartTime; // For Transfer Arm signal
@@ -87,7 +89,7 @@ extern const float POSITION_MOTOR_RETURN_ACCELERATION;
 extern const float POSITION_MOTOR_HOMING_SPEED;
 
 // Constants
-extern const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS;
+extern const unsigned long CATCHER_SERVO_ACTIVE_HOLD_DURATION_MS;
 extern const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS;
 extern const unsigned long TA_SIGNAL_DURATION; // Duration for TA signal
 extern const unsigned long WOOD_CAUGHT_CHECK_DELAY_MS; // Delay before checking if wood was caught
@@ -198,7 +200,7 @@ void handleStartSwitchContinuousMode(); // Continuous mode from main loop
 // Point 3: Complex conditional logic
 bool shouldStartCycle();
 // Point 4
-void handleServoReturn();
+void handleCatcherServoReturn();
 void scheduleWoodCaughtCheck(); // New function to schedule wood caught check
 void checkWoodCaught(); // New function to check if wood was caught
 

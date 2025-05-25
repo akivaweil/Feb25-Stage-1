@@ -19,11 +19,11 @@ const int POSITION_MOTOR_PULSE_PIN = 17;
 const int POSITION_MOTOR_DIR_PIN = 18;
 
 // Servo Pin Definition
-const int SERVO_PIN = 14;
+const int CATCHER_SERVO_PIN = 14;
 
 // Servo Position Constants
-const int SERVO_HOME_POSITION = 24;     // Home position (degrees)
-const int SERVO_ACTIVE_POSITION = 90;   // Position when activated (degrees)
+const int CATCHER_SERVO_HOME_POSITION = 24;     // Home position (degrees)
+const int CATCHER_SERVO_ACTIVE_POSITION = 90;   // Position when activated (degrees)
 
 // Switch and Sensor Pin Definitions
 const int CUT_MOTOR_HOMING_SWITCH = 3;
@@ -48,10 +48,10 @@ const int YELLOW_LED = 21;
 const int GREEN_LED = 37;
 const int BLUE_LED = 19;
 
-// Servo timing configuration
-const unsigned long SERVO_ACTIVE_HOLD_DURATION_MS = 2000;
-unsigned long servoActiveStartTime = 0;
-bool servoIsActiveAndTiming = false;
+// Catcher Servo timing configuration
+const unsigned long CATCHER_SERVO_ACTIVE_HOLD_DURATION_MS = 2000;
+unsigned long catcherServoActiveStartTime = 0;
+bool catcherServoIsActiveAndTiming = false;
 
 // Catcher Clamp timing variables
 const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS = 1500; // 1 second
@@ -119,7 +119,7 @@ FastAccelStepper *cutMotor = NULL;
 FastAccelStepper *positionMotor = NULL;
 
 // Servo object
-Servo servoMotor;
+Servo catcherServo;
 
 // Bounce objects for debouncing switches
 Bounce cutHomingSwitch = Bounce();
@@ -242,8 +242,8 @@ void setup() {
   }
   
   //! Initialize servo
-  servoMotor.setTimerWidth(14);
-  servoMotor.attach(SERVO_PIN);
+  catcherServo.setTimerWidth(14);
+  catcherServo.attach(CATCHER_SERVO_PIN);
   
   //! Configure initial state
   currentState = STARTUP;
@@ -275,16 +275,16 @@ void loop() {
   }
 
   // Handle servo return after hold duration at active position AND when WAS_WOOD_SUCTIONED_SENSOR reads HIGH
-  if (servoIsActiveAndTiming && (millis() - servoActiveStartTime >= SERVO_ACTIVE_HOLD_DURATION_MS)) {
+  if (catcherServoIsActiveAndTiming && (millis() - catcherServoActiveStartTime >= CATCHER_SERVO_ACTIVE_HOLD_DURATION_MS)) {
       if (digitalRead(WAS_WOOD_SUCTIONED_SENSOR) == HIGH) {
-          servoIsActiveAndTiming = false;
-          handleServoReturn(); // Call function to return servo to home position
-          Serial.println("Servo timing completed AND WAS_WOOD_SUCTIONED_SENSOR is HIGH, returning servo to home.");
+          catcherServoIsActiveAndTiming = false;
+          handleCatcherServoReturn(); // Call function to return catcher servo to home position
+          Serial.println("Servo timing completed AND WAS_WOOD_SUCTIONED_SENSOR is HIGH, returning catcher servo to home.");
       } else {
           // Only log this message periodically to avoid flooding the serial monitor
           static unsigned long lastLogTime = 0;
           if (millis() - lastLogTime >= 500) { // Log every 500ms
-              Serial.println("Waiting for WAS_WOOD_SUCTIONED_SENSOR to read HIGH before returning servo...");
+              Serial.println("Waiting for WAS_WOOD_SUCTIONED_SENSOR to read HIGH before returning catcher servo...");
               lastLogTime = millis();
           }
       }
@@ -373,7 +373,7 @@ void loop() {
     fixPositionStep = 0; // Reset step
     allLedsOff();
     turnBlueLedOn(); // Indicate FIX_POSITION active
-    Serial.println("FIX_POSITION button pressed in READY state. Entering FIX_POSITION state.");
+    Serial.println("FIX_POSITION button pressed in READY state. Starting cut motor home position verification.");
   }
   
   // State machine
@@ -451,7 +451,7 @@ void loop() {
           turnGreenLedOn();
 
           // Set initial servo position via function call
-          handleServoReturn();
+          handleCatcherServoReturn();
           currentState = READY;
         }
       } 
@@ -1129,13 +1129,22 @@ void loop() {
       break;
 
     //* ************************************************************************
-    //* ************************* FIX POSITION *******************************
+    //* ******************** CUT MOTOR POSITION FIX ****************************
     //* ************************************************************************
-    // Handles the fix position state.
+    // Handles manual cut motor home position verification and recalibration.
+    // This is a maintenance function specifically for situations where the cut motor
+    // may have lost its home position reference or the home sensor needs verification.
+    // The position motor movements are only to return the system to operational state
+    // after the cut motor position has been verified and recalibrated.
+    // 
+    // TRIGGERED BY: FIX_POSITION_BUTTON press while in READY state
+    // PURPOSE: Verify cut motor can properly detect its home position and recalibrate to 0
+    // 
     // Step 0: Extend position clamp, start 100ms timer.
-    // Step 1: After 100ms, retract clamps, start homing cut and position motors (to 0).
-    // Step 2: After motors home, engage position clamp, check cut motor sensor. If OK, move position motor to final.
-    // Step 3: After position motor reaches final, engage wood secure clamp, return to READY.
+    // Step 1: After 100ms, retract clamps, send both motors to home position.
+    // Step 2: Verify cut motor home sensor detection (3-try verification) and recalibrate position to 0.
+    //         If cut motor home sensor fails verification, transition to ERROR state.
+    // Step 3: Move position motor to operational position, engage clamps, return to READY.
     case FIX_POSITION:
       { // Scope for static timer
         static unsigned long step0Timer_fixPosition = 0; 
@@ -1152,7 +1161,7 @@ void loop() {
 
           case 1: // Wait for 100ms, then start the "yes-wood like" homing sequence
             if (millis() - step0Timer_fixPosition >= 100) {
-              Serial.println("FIX_POSITION Step 1: Position clamp extended. Starting homing part of sequence.");
+              Serial.println("FIX_POSITION Step 1: Position clamp extended. Starting cut motor home verification sequence.");
               retractPositionClamp(); 
               retractWoodSecureClamp(); 
 
@@ -1179,24 +1188,45 @@ void loop() {
               
               case 1: // Wait for cut motor to home, then check sensor
                 if (cutMotor && !cutMotor->isRunning()) {
-                  Serial.println("FIX_POSITION Step 2.1: Cut motor at home. Checking cut motor sensor.");
+                  Serial.println("FIX_POSITION Step 2.1: Cut motor at home. Starting slow recovery to verify home sensor.");
                   cutMotorInYesWoodReturn = false; // Disable special check now that motor has stopped
 
-                  bool sensorDetectedHome = false;
-                  for (int i = 0; i < 3; i++) {
-                    delay(30); 
+                  // Start slow recovery movement toward home
+                  cutMotor->setSpeedInHz(CUT_MOTOR_HOMING_SPEED); // Use existing homing speed constant
+                  cutMotor->setAcceleration(10000); // Moderate acceleration for controlled movement
+                  cutMotor->runBackward(); // Move toward home
+                  
+                  unsigned long recoveryStartTime = millis();
+                  bool homeFoundDuringRecovery = false;
+                  const unsigned long RECOVERY_TIMEOUT_MS = 5000; // 5 second timeout
+                  
+                  Serial.print("FIX_POSITION: Slow recovery started at ");
+                  Serial.print(CUT_MOTOR_HOMING_SPEED);
+                  Serial.println(" steps/sec with 5-second timeout...");
+                  
+                  // Monitor for home sensor detection during recovery
+                  while ((millis() - recoveryStartTime) < RECOVERY_TIMEOUT_MS) {
                     cutHomingSwitch.update();
+                    
                     if (cutHomingSwitch.read() == HIGH) {
-                      sensorDetectedHome = true;
-                      if (cutMotor) cutMotor->setCurrentPosition(0);
-                      Serial.println("FIX_POSITION Step 2.1: Cut motor home switch DETECTED.");
+                      // Home sensor detected during recovery!
+                      cutMotor->forceStopAndNewPosition(0);
+                      homeFoundDuringRecovery = true;
+                      
+                      unsigned long recoveryDuration = millis() - recoveryStartTime;
+                      Serial.print("SUCCESS: Cut motor home sensor detected during FIX_POSITION recovery after ");
+                      Serial.print(recoveryDuration);
+                      Serial.println(" ms. Position recalibrated to 0.");
                       break;
                     }
-                    Serial.println("FIX_POSITION Step 2.1: Cut motor home switch read attempt, still LOW.");
+                    
+                    delay(10); // Small delay to prevent excessive sensor polling
                   }
-
-                  if (!sensorDetectedHome) {
-                    Serial.println("FIX_POSITION Step 2.1 ERROR: Cut motor home switch NOT detected. Transitioning to ERROR.");
+                  
+                  if (!homeFoundDuringRecovery) {
+                    // Recovery timeout - stop motor and transition to error
+                    cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
+                    Serial.println("FIX_POSITION Step 2.1 ERROR: Recovery timeout after 5 seconds. Cut motor home sensor NOT detected.");
                     stopCutMotor();
                     // positionMotor already stopped
                     allLedsOff();
@@ -1207,7 +1237,7 @@ void loop() {
                     fixPositionStep = 0; // Reset main fix position step
                     fixPositionSubStep2 = 0; // Reset sub-step
                   } else {
-                    Serial.println("FIX_POSITION Step 2.1: Cut motor home confirmed. Retracting wood secure, moving position motor to final.");
+                    Serial.println("FIX_POSITION Step 2.1: Cut motor home confirmed via slow recovery. Moving position motor to final.");
                     retractWoodSecureClamp(); // Ensure wood secure clamp is retracted before final positioning
                     configurePositionMotorForNormalOperation();
                     movePositionMotorToPosition(POSITION_TRAVEL_DISTANCE);
@@ -1223,7 +1253,7 @@ void loop() {
             if (positionMotor && !positionMotor->isRunning()) {
               Serial.println("FIX_POSITION Step 3: Position motor at final travel distance. Engaging wood secure clamp.");
               extendWoodSecureClamp();
-              Serial.println("FIX_POSITION: Sequence complete. Returning to READY.");
+              Serial.println("CUT MOTOR POSITION FIX: Verification complete. Cut motor home position confirmed and recalibrated.");
               allLedsOff(); 
               turnGreenLedOn();
               currentState = READY;

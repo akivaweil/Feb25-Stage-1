@@ -23,11 +23,11 @@ void sendSignalToTA() {
   signalTAActive = true;
   Serial.println("Signal sent to Transfer Arm (TA)");
 
-  servoMotor.write(SERVO_ACTIVE_POSITION);
-  servoActiveStartTime = millis();
-  servoIsActiveAndTiming = true;
-  Serial.print("Servo moved to ");
-  Serial.print(SERVO_ACTIVE_POSITION);
+  catcherServo.write(CATCHER_SERVO_ACTIVE_POSITION);
+  catcherServoActiveStartTime = millis();
+  catcherServoIsActiveAndTiming = true;
+  Serial.print("Catcher servo moved to ");
+  Serial.print(CATCHER_SERVO_ACTIVE_POSITION);
   Serial.println(" degrees with TA signal.");
 }
 
@@ -384,16 +384,15 @@ bool shouldStartCycle() {
             && !woodSuctionError && startSwitchSafe);
 }
 
-// Point 4: Servo Timing
-void handleServoReturn() {
-    // Move servo to home position
-    servoMotor.write(SERVO_HOME_POSITION);
-    Serial.print("Servo returned to home position (");
-    Serial.print(SERVO_HOME_POSITION);
+// Point 4: Catcher Servo Timing
+void handleCatcherServoReturn() {
+    // Move catcher servo to home position
+    catcherServo.write(CATCHER_SERVO_HOME_POSITION);
+    Serial.print("Catcher servo returned to home position (");
+    Serial.print(CATCHER_SERVO_HOME_POSITION);
     Serial.println(" degrees).");
 }
 
-// Function for point 5, if pursued and renamed
 void handleTASignalTiming() { 
   if (signalTAActive && millis() - signalTAStartTime >= TA_SIGNAL_DURATION) {
     digitalWrite(TA_SIGNAL_OUT_PIN, LOW); // Return to inactive state (LOW)
