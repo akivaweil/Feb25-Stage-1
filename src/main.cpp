@@ -5,6 +5,11 @@
 #include <ESP32Servo.h>
 #include "OTAUpdater/ota_updater.h"
 #include "Functions.h"
+#include "ErrorStates/fix_cut_motor_position.h"
+#include "ErrorStates/standard_error.h"
+#include "ErrorStates/error_reset.h"
+#include "ErrorStates/suction_error_hold.h"
+#include "ErrorStates/wood_caught_error.h"
 
 //* ************************************************************************
 //* ************************ AUTOMATED TABLE SAW **************************
@@ -161,8 +166,7 @@ const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.0; // New constant
 // New flag to track cut motor return during yes-wood mode
 bool cutMotorInYesWoodReturn = false;
 
-// Global variable for FIX_POSITION state steps
-int fixPositionStep = 0;
+// FIX_POSITION state steps now defined in fix_position.cpp
 
 void setup() {
   Serial.begin(115200);
@@ -312,7 +316,7 @@ void loop() {
       case ERROR_RESET: Serial.println("ERROR_RESET"); break;
       case SUCTION_ERROR_HOLD: Serial.println("SUCTION_ERROR_HOLD"); break;
       case WAS_WOOD_CAUGHT_ERROR: Serial.println("WAS_WOOD_CAUGHT_ERROR"); break; // Added for new state
-      case FIX_POSITION: Serial.println("FIX_POSITION"); break;
+      case FIX_CUT_MOTOR_POSITION: Serial.println("FIX_CUT_MOTOR_POSITION"); break;
       default: Serial.println("UNKNOWN"); break;
     }
     previousState = currentState;
@@ -369,11 +373,11 @@ void loop() {
   
   // Check for fix position button press
   if (fixPositionButton.rose() && currentState == READY) {
-    currentState = FIX_POSITION;
-    fixPositionStep = 0; // Reset step
+    currentState = FIX_CUT_MOTOR_POSITION;
+    initFixCutMotorPosition(); // Reset step
     allLedsOff();
-    turnBlueLedOn(); // Indicate FIX_POSITION active
-    Serial.println("FIX_POSITION button pressed in READY state. Starting cut motor home position verification.");
+    turnBlueLedOn(); // Indicate FIX_CUT_MOTOR_POSITION active
+    Serial.println("FIX_CUT_MOTOR_POSITION button pressed in READY state. Starting cut motor home position verification.");
   }
   
   // State machine
@@ -997,271 +1001,41 @@ void loop() {
     //* ************************************************************************
     //* ***************************** ERROR ************************************
     //* ************************************************************************
-    // Handles system error states.
-    // Step 1: Blink red and yellow LEDs to indicate an error.
-    // Step 2: Ensure cut and position motors are stopped.
-    // Step 3: Wait for the reload switch to be pressed (rising edge) to acknowledge the error.
-    // Step 4: Once error is acknowledged, transition to ERROR_RESET state.
+    // ERROR logic moved to separate file: src/ErrorStates/standard_error.cpp
     case ERROR:
-      // handleErrorState(); // Will be replaced by inlined code
-      Serial.println("Entering handleErrorState (inlined)."); 
-      // Blink error LEDs
-      if (millis() - lastErrorBlinkTime > 250) { // Assuming lastErrorBlinkTime is global
-        errorBlinkState = !errorBlinkState; // Assuming errorBlinkState is global
-        if(errorBlinkState) turnRedLedOn(); else turnRedLedOff();
-        if(!errorBlinkState) turnYellowLedOn(); else turnYellowLedOff();
-        lastErrorBlinkTime = millis();
-      }
-      
-      // Keep motors stopped
-      stopCutMotor();
-      stopPositionMotor();
-      
-      // Wait for reload switch to acknowledge error
-      if (errorAcknowledged) { // Assuming errorAcknowledged and reloadSwitch are global
-        currentState = ERROR_RESET;
-        Serial.println("Error acknowledged in handleErrorState (inlined). Transitioning to ERROR_RESET."); 
-      }
+      handleStandardErrorState();
       break;
       
     //* ************************************************************************
     //* ************************** ERROR_RESET *********************************
     //* ************************************************************************
-    // Handles the reset sequence after an error has been acknowledged.
-    // Step 1: Turn off red and yellow error LEDs.
-    // Step 2: Reset errorAcknowledged and woodSuctionError flags.
-    // Step 3: Transition to STARTUP state to re-initialize the system (which will lead to HOMING).
+    // ERROR_RESET logic moved to separate file: src/ErrorStates/error_reset.cpp
     case ERROR_RESET:
-      // resetFromError(); // Will be replaced by inlined code
-      Serial.println("Entering resetFromError (inlined)."); 
-      // Turn off error LEDs
-      turnRedLedOff();
-      turnYellowLedOff();
-      
-      // Reset flags
-      errorAcknowledged = false; // Global
-      woodSuctionError = false; // Global
-      
-      // Return to homing state to re-initialize
-      currentState = STARTUP;
-      Serial.println("Error reset, restarting system. Transitioning to STARTUP."); 
+      handleErrorResetState();
       break;
 
     //* ************************************************************************
     //* ********************* SUCTION ERROR HOLD *******************************
     //* ************************************************************************
-    // Handles waiting for user to reset a wood suction error via cycle switch.
-    // This state is entered from CUTTING (Step 1) if the WAS_WOOD_SUCTIONED_SENSOR indicates an error (LOW).
-    // Step 1: Slowly blink the red LED (e.g., every 1.5 seconds).
-    // Step 2: Ensure yellow, green, and blue LEDs are off.
-    // Step 3: Monitor the start cycle switch.
-    // Step 4: If the start cycle switch shows a rising edge (OFF to ON transition):
-    //          - Print a message about resetting from suction error.
-    //          - Turn off the red LED.
-    //          - Set continuousModeActive to false.
-    //          - Set startSwitchSafe to false (requires user to cycle switch again for a new start).
-    //          - Transition to HOMING state to re-initialize the system.
+    // SUCTION_ERROR_HOLD logic moved to separate file: src/ErrorStates/suction_error_hold.cpp
     case SUCTION_ERROR_HOLD:
-      { // Scope for static variables
-        static unsigned long lastSuctionErrorBlinkTime = 0;
-        static bool suctionErrorBlinkState = false;
-
-        // Blink RED_LED every 2 seconds
-        if (millis() - lastSuctionErrorBlinkTime >= 1500) {
-          lastSuctionErrorBlinkTime = millis();
-          suctionErrorBlinkState = !suctionErrorBlinkState;
-          if(suctionErrorBlinkState) turnRedLedOn(); else turnRedLedOff();
-        }
-        // Ensure other LEDs are off
-        turnYellowLedOff();
-        turnGreenLedOff();
-        turnBlueLedOff();
-
-        if (startCycleSwitch.rose()) { // Check for start switch OFF to ON transition
-          Serial.println("Start cycle switch toggled ON. Resetting from suction error. Transitioning to HOMING.");
-          turnRedLedOff();   // Turn off error LED explicitly before changing state
-          
-          continuousModeActive = false; // Ensure continuous mode is off
-          startSwitchSafe = false;      // Require user to cycle switch OFF then ON for a new actual start
-          
-          currentState = HOMING;        // Go to HOMING to re-initialize
-        }
-      }
+      handleSuctionErrorHoldState();
       break;
 
     //* ************************************************************************
     //* ********************* WAS_WOOD_CAUGHT_ERROR ***************************
     //* ************************************************************************
-    // Handles the case where the wood was not properly caught by the catcher.
-    // Step 1: Blink red LED at a moderate pace (once per second).
-    // Step 2: Ensure all other LEDs are off.
-    // Step 3: Ensure position motor is stopped (cut motor continues to home).
-    // Step 4: Wait for cycle switch to be pressed (rising edge) to acknowledge the error.
-    // Step 5: When cycle switch is pressed, transition to HOMING state.
+    // WAS_WOOD_CAUGHT_ERROR logic moved to separate file: src/ErrorStates/wood_caught_error.cpp
     case WAS_WOOD_CAUGHT_ERROR:
-      { // Scope for static variables
-        static unsigned long lastWoodCaughtErrorBlinkTime = 0;
-        static bool woodCaughtErrorBlinkState = false;
-
-        // Blink RED_LED once per second
-        handleWoodCaughtErrorLedBlink(lastWoodCaughtErrorBlinkTime, woodCaughtErrorBlinkState);
-
-        // Keep position motor stopped (cut motor continues to home)
-        stopPositionMotor();
-        
-        // Check for cycle switch rising edge (OFF to ON transition)
-        if (startCycleSwitch.rose()) { 
-          Serial.println("Start cycle switch toggled ON. Resetting from wood caught error. Transitioning to HOMING.");
-          turnRedLedOff();   // Turn off error LED explicitly before changing state
-          
-          // Clear error flags
-          wasWoodCaughtError = false;
-          
-          // Reset mode flags
-          continuousModeActive = false; // Ensure continuous mode is off
-          startSwitchSafe = false;      // Require user to cycle switch OFF then ON for a new actual start
-          
-          currentState = HOMING;        // Go to HOMING to re-initialize
-        }
-        
-        Serial.println("Waiting for cycle switch to acknowledge wood caught error.");
-      }
+      handleWoodCaughtErrorState();
       break;
 
     //* ************************************************************************
     //* ******************** CUT MOTOR POSITION FIX ****************************
     //* ************************************************************************
-    // Handles manual cut motor home position verification and recalibration.
-    // This is a maintenance function specifically for situations where the cut motor
-    // may have lost its home position reference or the home sensor needs verification.
-    // The position motor movements are only to return the system to operational state
-    // after the cut motor position has been verified and recalibrated.
-    // 
-    // TRIGGERED BY: FIX_POSITION_BUTTON press while in READY state
-    // PURPOSE: Verify cut motor can properly detect its home position and recalibrate to 0
-    // 
-    // Step 0: Extend position clamp, start 100ms timer.
-    // Step 1: After 100ms, retract clamps, send both motors to home position.
-    // Step 2: Verify cut motor home sensor detection (3-try verification) and recalibrate position to 0.
-    //         If cut motor home sensor fails verification, transition to ERROR state.
-    // Step 3: Move position motor to operational position, engage clamps, return to READY.
-    case FIX_POSITION:
-      { // Scope for static timer
-        static unsigned long step0Timer_fixPosition = 0; 
-        static int fixPositionSubStep2 = 0; // <<< NEW SUB-STEP FOR FIX_POSITION STEP 2
-        // Serial.print("Current State: FIX_POSITION, Step: "); Serial.println(fixPositionStep);
-
-        switch (fixPositionStep) {
-          case 0: // Initial action: extend position clamp and wait 100ms
-            Serial.println("FIX_POSITION Step 0: Extending position clamp.");
-            extendPositionClamp();
-            step0Timer_fixPosition = millis();
-            fixPositionStep = 1;
-            break;
-
-          case 1: // Wait for 100ms, then start the "yes-wood like" homing sequence
-            if (millis() - step0Timer_fixPosition >= 100) {
-              Serial.println("FIX_POSITION Step 1: Position clamp extended. Starting cut motor home verification sequence.");
-              retractPositionClamp(); 
-              retractWoodSecureClamp(); 
-
-              configurePositionMotorForReturn();
-              configureCutMotorForReturn();      
-
-              moveCutMotorToHome();
-              movePositionMotorToYesWoodHome(); // Moves to 0
-              cutMotorInYesWoodReturn = true; // Enable check for cut motor hitting home switch during move
-              fixPositionStep = 2;
-              fixPositionSubStep2 = 0; // Reset sub-step for case 2
-            }
-            break;
-
-          case 2: // Wait for motors to reach home (position motor first, then cut)
-            switch (fixPositionSubStep2) {
-              case 0: // Wait for position motor to home
-                if (positionMotor && !positionMotor->isRunning()) {
-                  Serial.println("FIX_POSITION Step 2.0: Position motor at home. Engaging position clamp.");
-                  extendPositionClamp();
-                  fixPositionSubStep2 = 1;
-                }
-                break;
-              
-              case 1: // Wait for cut motor to home, then check sensor
-                if (cutMotor && !cutMotor->isRunning()) {
-                  Serial.println("FIX_POSITION Step 2.1: Cut motor at home. Starting slow recovery to verify home sensor.");
-                  cutMotorInYesWoodReturn = false; // Disable special check now that motor has stopped
-
-                  // Start slow recovery movement toward home
-                  cutMotor->setSpeedInHz(CUT_MOTOR_HOMING_SPEED); // Use existing homing speed constant
-                  cutMotor->setAcceleration(10000); // Moderate acceleration for controlled movement
-                  cutMotor->runBackward(); // Move toward home
-                  
-                  unsigned long recoveryStartTime = millis();
-                  bool homeFoundDuringRecovery = false;
-                  const unsigned long RECOVERY_TIMEOUT_MS = 5000; // 5 second timeout
-                  
-                  Serial.print("FIX_POSITION: Slow recovery started at ");
-                  Serial.print(CUT_MOTOR_HOMING_SPEED);
-                  Serial.println(" steps/sec with 5-second timeout...");
-                  
-                  // Monitor for home sensor detection during recovery
-                  while ((millis() - recoveryStartTime) < RECOVERY_TIMEOUT_MS) {
-                    cutHomingSwitch.update();
-                    
-                    if (cutHomingSwitch.read() == HIGH) {
-                      // Home sensor detected during recovery!
-                      cutMotor->forceStopAndNewPosition(0);
-                      homeFoundDuringRecovery = true;
-                      
-                      unsigned long recoveryDuration = millis() - recoveryStartTime;
-                      Serial.print("SUCCESS: Cut motor home sensor detected during FIX_POSITION recovery after ");
-                      Serial.print(recoveryDuration);
-                      Serial.println(" ms. Position recalibrated to 0.");
-                      break;
-                    }
-                    
-                    delay(10); // Small delay to prevent excessive sensor polling
-                  }
-                  
-                  if (!homeFoundDuringRecovery) {
-                    // Recovery timeout - stop motor and transition to error
-                    cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
-                    Serial.println("FIX_POSITION Step 2.1 ERROR: Recovery timeout after 5 seconds. Cut motor home sensor NOT detected.");
-                    stopCutMotor();
-                    // positionMotor already stopped
-                    allLedsOff();
-                    turnRedLedOn();
-                    turnYellowLedOn(); 
-                    currentState = ERROR;
-                    errorStartTime = millis(); 
-                    fixPositionStep = 0; // Reset main fix position step
-                    fixPositionSubStep2 = 0; // Reset sub-step
-                  } else {
-                    Serial.println("FIX_POSITION Step 2.1: Cut motor home confirmed via slow recovery. Moving position motor to final.");
-                    retractWoodSecureClamp(); // Ensure wood secure clamp is retracted before final positioning
-                    configurePositionMotorForNormalOperation();
-                    movePositionMotorToPosition(POSITION_TRAVEL_DISTANCE);
-                    fixPositionStep = 3;
-                    fixPositionSubStep2 = 0; // Reset sub-step
-                  }
-                }
-                break;
-            }
-            break;
-
-          case 3: // Wait for position motor to reach POSITION_TRAVEL_DISTANCE
-            if (positionMotor && !positionMotor->isRunning()) {
-              Serial.println("FIX_POSITION Step 3: Position motor at final travel distance. Engaging wood secure clamp.");
-              extendWoodSecureClamp();
-              Serial.println("CUT MOTOR POSITION FIX: Verification complete. Cut motor home position confirmed and recalibrated.");
-              allLedsOff(); 
-              turnGreenLedOn();
-              currentState = READY;
-              fixPositionStep = 0; // Reset for next time
-            }
-            break;
-        }
-      } // End scope for static timer
+    // FIX_CUT_MOTOR_POSITION logic moved to separate file: src/ErrorStates/fix_cut_motor_position.cpp
+    case FIX_CUT_MOTOR_POSITION:
+      handleFixCutMotorPositionState();
       break;
   }
   

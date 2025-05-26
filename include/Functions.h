@@ -26,7 +26,7 @@ enum SystemState {
   ERROR_RESET,
   SUCTION_ERROR_HOLD,
   WAS_WOOD_CAUGHT_ERROR,
-  FIX_POSITION
+  FIX_CUT_MOTOR_POSITION
 };
 
 // Extern declarations for Pin Definitions
