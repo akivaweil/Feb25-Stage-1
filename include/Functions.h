@@ -18,15 +18,15 @@ class Bounce; // Forward declaration for linter
 enum SystemState {
   STARTUP,
   HOMING,
-  READY,
+  IDLE,
   CUTTING,
   RETURNING,
-  POSITIONING,
-  ERROR,
-  ERROR_RESET,
-  SUCTION_ERROR_HOLD,
-  WAS_WOOD_CAUGHT_ERROR,
-  FIX_CUT_MOTOR_POSITION
+      POSITIONING,
+    ERROR,
+    ERROR_RESET,
+    SUCTION_ERROR_HOLD,
+    WAS_WOOD_CAUGHT_ERROR,
+    FIX_WOOD_POSITION
 };
 
 // Extern declarations for Pin Definitions
@@ -88,6 +88,12 @@ extern const float POSITION_MOTOR_RETURN_SPEED;
 extern const float POSITION_MOTOR_RETURN_ACCELERATION;
 extern const float POSITION_MOTOR_HOMING_SPEED;
 
+// Additional constants
+extern const float CUT_MOTOR_INCREMENTAL_MOVE_INCHES;
+extern const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES;
+extern const unsigned long CUT_HOME_TIMEOUT;
+extern const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES;
+
 // Constants
 extern const unsigned long CATCHER_SERVO_ACTIVE_HOLD_DURATION_MS;
 extern const unsigned long CATCHER_CLAMP_ENGAGE_DURATION_MS;
@@ -99,6 +105,7 @@ extern Bounce cutHomingSwitch;
 extern Bounce positionHomingSwitch;
 extern Bounce reloadSwitch;
 extern Bounce startCycleSwitch;
+extern Bounce fixPositionButton;
 
 // System flags
 extern bool isReloadMode;
@@ -115,8 +122,8 @@ extern unsigned long woodCaughtCheckTime; // Time when the wood caught check sho
 // Timers for LEDs/Errors
 extern unsigned long lastBlinkTime;
 extern unsigned long lastErrorBlinkTime;
-// errorStartTime is used in main, but not directly by these planned refactored functions yet.
-// positionMoveStartTime not directly used by these.
+extern unsigned long errorStartTime;
+extern unsigned long positionMoveStartTime;
 
 // LED states for blinking
 extern bool blinkState;
@@ -175,7 +182,7 @@ void moveCutMotorToCut();
 void moveCutMotorToHome();
 void movePositionMotorToTravel();
 void movePositionMotorToHome();
-void movePositionMotorToYesWoodHome();  // New function for yes-wood mode
+void movePositionMotorToYesWoodHome();  // New function for YES_WOOD mode
 void movePositionMotorToPosition(float targetPositionInches);
 void stopCutMotor();
 void stopPositionMotor();

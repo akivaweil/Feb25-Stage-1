@@ -74,7 +74,7 @@ CutMotorHomeErrorResult createWarningOnlyResult(const String& message) {
 
 //! REAL-TIME CUT MOTOR HOME DETECTION DURING YES-WOOD RETURN
 //! This function provides continuous monitoring of the cut motor home sensor
-//! during yes-wood return sequences, implementing controlled deceleration
+//! during YES_WOOD return sequences, implementing controlled deceleration
 //! instead of abrupt stops for reliable sensor engagement.
 void performCutMotorRealTimeHomeSensorCheck(FastAccelStepper* cutMotor, Bounce& cutHomingSwitch, bool& cutMotorInYesWoodReturn) {
     
@@ -92,7 +92,7 @@ void performCutMotorRealTimeHomeSensorCheck(FastAccelStepper* cutMotor, Bounce& 
     const float DECELERATION_DISTANCE_INCHES = 0.2; // Maximum 0.2 inch deceleration distance
     const unsigned long SENSOR_VERIFICATION_DELAY_MS = 30; // 30ms sensor stabilization delay
     
-    //! ONLY ACTIVE DURING YES-WOOD RETURN SEQUENCES
+    //! ONLY ACTIVE DURING YES_WOOD RETURN SEQUENCES
     if (cutMotorInYesWoodReturn && cutMotor) {
         switch (realTimeCheckState) {
             
@@ -100,7 +100,7 @@ void performCutMotorRealTimeHomeSensorCheck(FastAccelStepper* cutMotor, Bounce& 
             case MONITORING:
                 if (cutMotor->isRunning() && cutHomingSwitch.read() == HIGH) {
                     //! HOME SENSOR DETECTED DURING MOVEMENT!
-                    Serial.println("REAL-TIME DETECTION: Cut motor hit homing sensor during yes-wood return - beginning controlled deceleration...");
+                    Serial.println("REAL-TIME DETECTION: Cut motor hit homing sensor during YES_WOOD return - beginning controlled deceleration...");
                     
                     //! Calculate safe target position for controlled stop
                     // Move further toward home (more negative) to ensure sensor is firmly pressed
@@ -152,9 +152,9 @@ void performCutMotorRealTimeHomeSensorCheck(FastAccelStepper* cutMotor, Bounce& 
                 if (cutHomingSwitch.read() == HIGH) {
                     //! SUCCESSFUL HOME DETECTION WITH STABLE CONTACT
                     cutMotor->setCurrentPosition(0); // Recalibrate position to home
-                    cutMotorInYesWoodReturn = false;  // Clear the yes-wood return flag
+                    cutMotorInYesWoodReturn = false;  // Clear the YES_WOOD return flag
                     Serial.println("SUCCESS: Home sensor verified as stable after 30ms delay.");
-                    Serial.println("Cut motor position recalibrated to 0, yes-wood return flag cleared.");
+                    Serial.println("Cut motor position recalibrated to 0, YES_WOOD return flag cleared.");
                 } else {
                     //! FALSE TRIGGER OR INSUFFICIENT CONTACT
                     Serial.println("WARNING: Home sensor not active after 30ms verification delay.");
@@ -165,9 +165,9 @@ void performCutMotorRealTimeHomeSensorCheck(FastAccelStepper* cutMotor, Bounce& 
                 break;
         }
     } else {
-        //! RESET STATE MACHINE when not in yes-wood return mode
+        //! RESET STATE MACHINE when not in YES_WOOD return mode
         if (realTimeCheckState != MONITORING) {
-            Serial.println("Real-time check state reset - exiting yes-wood return mode");
+            Serial.println("Real-time check state reset - exiting YES_WOOD return mode");
             realTimeCheckState = MONITORING;
         }
     }
@@ -279,7 +279,7 @@ CutMotorHomeErrorResult handleCutMotorHomeError(
     // ====================================================================
     
     else if (!allowSlowRecovery) {
-        //? Slow recovery not allowed for this context (currently only used for no-wood sequences)
+        //? Slow recovery not allowed for this context (currently only used for NO_WOOD sequences)
         String warningMessage = String("WARNING: Cut motor home sensor did not detect home for ") + contextDescription + 
                               String(", but slow recovery disabled. Proceeding with warning.");
         Serial.println(warningMessage);

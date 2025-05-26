@@ -68,7 +68,7 @@ void handleFixCutMotorPositionState() {
             fixCutMotorPositionStep = 1;
             break;
 
-        case 1: // Wait for 100ms, then start the "yes-wood like" homing sequence
+        case 1: // Wait for 100ms, then start the "YES_WOOD like" homing sequence
             if (millis() - step0Timer_fixCutMotorPosition >= 100) {
                 Serial.println("FIX_CUT_MOTOR_POSITION Step 1: Position clamp extended. Starting cut motor home verification sequence.");
                 retractPositionClamp(); 

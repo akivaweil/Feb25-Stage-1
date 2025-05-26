@@ -1,14 +1,14 @@
-#ifndef FIX_CUT_MOTOR_POSITION_H
-#define FIX_CUT_MOTOR_POSITION_H
+#ifndef FIX_WOOD_POSITION_H
+#define FIX_WOOD_POSITION_H
 
 #include <Arduino.h>
 #include "Functions.h"
 
-// Function declarations for fix cut motor position functionality
-void handleFixCutMotorPositionState();
-void initFixCutMotorPosition();
+// Function declarations for fix wood position functionality
+void handleFixWoodPositionState();
+void initFixWoodPosition();
 
 // External variable declaration
-extern int fixCutMotorPositionStep;
+extern int fixWoodPositionStep;
 
-#endif // FIX_CUT_MOTOR_POSITION_H 
+#endif // FIX_WOOD_POSITION_H 

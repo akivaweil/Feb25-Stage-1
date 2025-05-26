@@ -411,7 +411,7 @@ void handleCatcherClampDisengage() { // Point 4
 void movePositionMotorToYesWoodHome() {
     if (positionMotor) {
         positionMotor->moveTo(0);
-        Serial.println("Position motor moving to yes-wood home position (0 inches)");
+        Serial.println("Position motor moving to YES_WOOD home position (0 inches)");
     }
 }
 
