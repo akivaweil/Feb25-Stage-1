@@ -19,6 +19,7 @@ enum SystemState {
   STARTUP,
   HOMING,
   IDLE,
+  READY,
   CUTTING,
   RETURNING,
       POSITIONING,
@@ -26,7 +27,8 @@ enum SystemState {
     ERROR_RESET,
     SUCTION_ERROR_HOLD,
     WAS_WOOD_CAUGHT_ERROR,
-    FIX_WOOD_POSITION
+    FIX_WOOD_POSITION,
+    FIX_CUT_MOTOR_POSITION
 };
 
 // Extern declarations for Pin Definitions
@@ -210,5 +212,12 @@ bool shouldStartCycle();
 void handleCatcherServoReturn();
 void scheduleWoodCaughtCheck(); // New function to schedule wood caught check
 void checkWoodCaught(); // New function to check if wood was caught
+
+//* ************************************************************************
+//* ************************* ERROR STATE FUNCTIONS ************************
+//* ************************************************************************
+// Error state handling functions
+void handleFixCutMotorPositionState();
+void initFixCutMotorPosition();
 
 #endif // FUNCTIONS_H 

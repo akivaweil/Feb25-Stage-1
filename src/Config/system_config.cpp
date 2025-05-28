@@ -26,7 +26,7 @@ const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES = 0.4; // Max inches for incre
 
 // Motor homing direction constants
 const int CUT_HOMING_DIRECTION = -1;
-const int POSITION_HOMING_DIRECTION = -1;
+const int POSITION_HOMING_DIRECTION = 1;
 
 //* ************************************************************************
 //* ************************ CUT MOTOR SPEED SETTINGS ********************

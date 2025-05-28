@@ -1,4 +1,5 @@
 #include "ErrorStates/fix_cut_motor_position.h"
+#include "Functions.h"
 #include <Bounce2.h>
 #include <FastAccelStepper.h>
 
