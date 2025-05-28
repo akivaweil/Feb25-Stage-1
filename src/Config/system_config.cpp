@@ -77,4 +77,4 @@ const unsigned long TA_SIGNAL_DURATION = 150; // Duration for Transfer Arm signa
 //* ************************ OPERATIONAL CONSTANTS ***********************
 //* ************************************************************************
 // Catcher clamp early activation offset
-const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.0; 
+const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.2; 
