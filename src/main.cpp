@@ -3,16 +3,10 @@
 #include <FastAccelStepper.h>
 #include <esp_system.h>
 #include <ESP32Servo.h>
-#include "Config/pin_definitions.h"
-#include "Config/system_config.h"
-#include "OTAUpdater/ota_updater.h"
-#include "Functions.h"
-#include "StateMachine/StateManager.h"
-#include "ErrorStates/fix_cut_motor_position.h"
-#include "ErrorStates/standard_error.h"
-#include "ErrorStates/error_reset.h"
-#include "ErrorStates/suction_error_hold.h"
-#include "ErrorStates/wood_caught_error.h"
+#include "Config/Config.h"
+#include "Config/Pins_Definitions.h"
+#include "StateMachine/StateMachine.h"
+#include "OTA_Manager.h"
 
 //* ************************************************************************
 //* ************************ AUTOMATED TABLE SAW **************************
@@ -22,20 +16,16 @@
 
 // Pin definitions and configuration constants are now in Config/ header files
 
-// Timing variables (constants moved to Config/system_config.h)
+// Timing variables (constants moved to Config/Config.h)
 unsigned long catcherServoActiveStartTime = 0;
 bool catcherServoIsActiveAndTiming = false;
 
 unsigned long catcherClampEngageTime = 0;
 bool catcherClampIsEngaged = false;
 
-// SystemStates Enum is now in Functions.h
-SystemState currentState = STARTUP;
-SystemState previousState = ERROR_RESET; // Initialize to a different state to ensure first print
-
-// Motor configuration constants moved to Config/system_config.h
-
-// Speed and acceleration settings moved to Config/system_config.h
+// SystemStates Enum is now in StateMachine/StateMachine.h
+extern SystemState currentState;
+extern SystemState previousState;
 
 // Create motor objects
 FastAccelStepperEngine engine = FastAccelStepperEngine();
@@ -82,18 +72,13 @@ bool signalTAActive = false;      // For Transfer Arm signal
 // New flag to track cut motor return during YES_WOOD mode
 bool cutMotorInYesWoodReturn = false;
 
-// Additional variables needed by states - declarations moved to above
-
-// FIX_POSITION state steps now defined in fix_position.cpp
-
-// StateManager instance is created in StateManager.cpp
-
 void setup() {
   Serial.begin(115200);
   Serial.println("Automated Table Saw Control System - Stage 1");
-  
-  setupOTA();
 
+    //! Initialize OTA functionality
+  initOTA();
+  
   //! Configure pin modes
   pinMode(CUT_MOTOR_PULSE_PIN, OUTPUT);
   pinMode(CUT_MOTOR_DIR_PIN, OUTPUT);
@@ -121,12 +106,8 @@ void setup() {
   pinMode(TA_SIGNAL_OUT_PIN, OUTPUT);
   digitalWrite(TA_SIGNAL_OUT_PIN, LOW);
   
-  //! Initialize clamps and LEDs
-  extendPositionClamp();
-  extendWoodSecureClamp();
-  retractCatcherClamp();
-  allLedsOff();
-  turnBlueLedOn();
+  //! Initialize state machine
+  initializeStateMachine();
   
   //! Configure switch debouncing
   cutHomingSwitch.attach(CUT_MOTOR_HOMING_SWITCH);
@@ -150,8 +131,10 @@ void setup() {
   cutMotor = engine.stepperConnectToPin(CUT_MOTOR_PULSE_PIN);
   if (cutMotor) {
     cutMotor->setDirectionPin(CUT_MOTOR_DIR_PIN);
-    configureCutMotorForCutting();
+    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_NORMAL_SPEED);
+    cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION);
     cutMotor->setCurrentPosition(0);
+    cutMotor->setPulseWidthInMicros(CUT_MOTOR_MIN_PULSE_WIDTH);
   } else {
     Serial.println("Failed to init cutMotor");
   }
@@ -159,8 +142,10 @@ void setup() {
   positionMotor = engine.stepperConnectToPin(POSITION_MOTOR_PULSE_PIN);
   if (positionMotor) {
     positionMotor->setDirectionPin(POSITION_MOTOR_DIR_PIN);
-    configurePositionMotorForNormalOperation();
+    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor->setAcceleration((uint32_t)POSITION_MOTOR_NORMAL_ACCELERATION);
     positionMotor->setCurrentPosition(0);
+    positionMotor->setPulseWidthInMicros(POSITION_MOTOR_MIN_PULSE_WIDTH);
   } else {
     Serial.println("Failed to init positionMotor");
   }
@@ -171,6 +156,7 @@ void setup() {
   
   //! Configure initial state
   currentState = STARTUP;
+  previousState = ERROR_RESET; // Initialize to a different state to ensure first print
   
   startCycleSwitch.update();
   if (startCycleSwitch.read() == HIGH) {
@@ -179,12 +165,27 @@ void setup() {
     startSwitchSafe = true;
   }
   
+  //! Initialize clamps and LEDs
+  // extendPositionClamp();       // Commented out - function missing
+  // extendWoodSecureClamp();     // Commented out - function missing  
+  // retractCatcherClamp();       // Commented out - function missing
+  // allLedsOff();                // Commented out - function missing
+  // turnBlueLedOn();             // Commented out - function missing
+  
+  // Initialize LEDs directly
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(YELLOW_LED, LOW);
+  digitalWrite(GREEN_LED, LOW);
+  digitalWrite(BLUE_LED, HIGH);  // Turn on blue LED
+  
+  Serial.println("Setup complete - early activation functionality ready");
+  
   delay(10);
 }
 
 void loop() {
-  handleOTA(); // Handle OTA requests
-
-  // Execute the state machine - all the logic below has been moved to StateManager
-  stateManager.execute();
-}
+  // Execute the state machine
+  updateStateMachine();
+      //! Handle OTA updates
+  handleOTA();
+} 
