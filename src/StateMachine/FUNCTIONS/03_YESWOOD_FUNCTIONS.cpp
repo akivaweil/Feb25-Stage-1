@@ -61,13 +61,13 @@ void performWoodSecuring() {
     Serial.println("Performing wood securing sequence");
     
     // Secure the wood piece with clamps
-    extendClamp(WOOD_SECURE_CLAMP_TYPE);
+    extendClamp(WOOD_SECURE_CLAMP);
     
     // Wait for clamp to engage
     delay(CYLINDER_RETRACT_TIME);
     
     // Retract the wood secure clamp to allow movement
-    retractClamp(WOOD_SECURE_CLAMP_TYPE);
+    retractClamp(WOOD_SECURE_CLAMP);
     
     Serial.println("Wood securing complete");
 }
@@ -76,7 +76,7 @@ void performWoodReleasing() {
     Serial.println("Performing wood releasing sequence");
     
     // Retract wood secure clamp
-    retractClamp(WOOD_SECURE_CLAMP_TYPE);
+    retractClamp(WOOD_SECURE_CLAMP);
     delay(CYLINDER_RETRACT_TIME);
     
     Serial.println("Wood releasing complete");
