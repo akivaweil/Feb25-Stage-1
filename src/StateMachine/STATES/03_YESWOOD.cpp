@@ -23,57 +23,5 @@
 #include "../../../include/StateMachine/StateMachine.h"
 
 void yeswood_state() {
-    //! ************************************************************************
-    //! STEP 1: RETURN CUT MOTOR TO 0 (SIMULTANEOUS WITH OTHER OPERATIONS)
-    //! ************************************************************************
-    
-    // TODO: Start returning cut motor to position 0
-    
-    //! ************************************************************************
-    //! STEP 2: RETRACT SECURE WOOD CLAMP
-    //! ************************************************************************
-    
-    // TODO: Retract the secure wood clamp
-    
-    //! ************************************************************************
-    //! STEP 3: MOVE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE - 0.1
-    //! ************************************************************************
-    
-    // TODO: Move position motor to POSITION_TRAVEL_DISTANCE - 0.1
-    
-    //! ************************************************************************
-    //! STEP 4: SWAP CLAMP POSITIONS
-    //! ************************************************************************
-    
-    // TODO: Extend secure wood clamp
-    // TODO: Retract position clamp
-    
-    //! ************************************************************************
-    //! STEP 5: RETURN POSITION MOTOR TO 0
-    //! ************************************************************************
-    
-    // TODO: Move position motor to position 0
-    // TODO: When position motor reaches 0, extend position clamp
-    
-    //! ************************************************************************
-    //! STEP 6: WAIT FOR CUT MOTOR HOME AND VERIFY
-    //! ************************************************************************
-    
-    // TODO: Wait until cut motor is home
-    // TODO: 10ms after cut motor reports position 0, check homing sensor
-    // TODO: If homing sensor reads LOW, enter cutmotorfailedtohome error state
-    
-    //! ************************************************************************
-    //! STEP 7: FINAL HOME CHECK AND ADVANCE
-    //! ************************************************************************
-    
-    // TODO: Inside if statement: move position motor to POSITION_TRAVEL_DISTANCE
-    
-    //! ************************************************************************
-    //! STEP 8: CHECK RUN CYCLE SWITCH AND ROUTE
-    //! ************************************************************************
-    
-    // TODO: Check if run cycle switch is HIGH
-    // TODO: If HIGH -> transition to CUTTING state
-    // TODO: If not HIGH -> return to IDLE state
+    executeYeswoodSequence();
 }

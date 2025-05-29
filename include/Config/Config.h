@@ -36,6 +36,10 @@ extern const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES; // Max inches for incr
 extern const int CUT_HOMING_DIRECTION;
 extern const int POSITION_HOMING_DIRECTION;
 
+// Motor homing distance constants
+extern const long CUT_MOTOR_HOMING_DISTANCE;      // Maximum distance to travel during homing
+extern const long POSITION_MOTOR_HOMING_DISTANCE; // Maximum distance to travel during homing
+
 // Calculated motor positions
 extern const long CUT_MOTOR_CUT_POSITION;  // = CUT_TRAVEL_DISTANCE * CUT_MOTOR_STEPS_PER_INCH
 extern const long POSITION_MOTOR_TRAVEL_POSITION;  // = POSITION_TRAVEL_DISTANCE * POSITION_MOTOR_STEPS_PER_INCH
@@ -86,6 +90,9 @@ extern const unsigned long WOOD_CAUGHT_CHECK_DELAY_MS; // 1 second delay to chec
 
 // Cut motor homing timeout
 extern const unsigned long CUT_HOME_TIMEOUT; // 5 seconds timeout
+
+// Position motor homing timeout
+extern const unsigned long POSITION_HOME_TIMEOUT; // Timeout for position motor homing
 
 // Signal timing
 extern const unsigned long TA_SIGNAL_DURATION; // Duration for Transfer Arm signal (ms)

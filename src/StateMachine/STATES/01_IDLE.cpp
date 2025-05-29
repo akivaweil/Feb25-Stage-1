@@ -19,29 +19,5 @@
 #include "../../../include/StateMachine/StateMachine.h"
 
 void idle_state() {
-    //! ************************************************************************
-    //! STEP 1: CHECK FOR OTA UPLOADS
-    //! ************************************************************************
-    
-    // TODO: Add OTA upload check functionality
-    
-    //! ************************************************************************
-    //! STEP 2: CHECK START CYCLE SWITCH
-    //! ************************************************************************
-    
-    // TODO: Check if start cycle switch is HIGH
-    // TODO: If HIGH, transition to CUTTING state
-    
-    //! ************************************************************************
-    //! STEP 3: CHECK RELOAD SWITCH
-    //! ************************************************************************
-    
-    // TODO: Check if reload switch is HIGH  
-    // TODO: If HIGH, transition to RELOAD state
-    
-    //! ************************************************************************
-    //! STEP 4: CONTINUE MONITORING LOOP
-    //! ************************************************************************
-    
-    // TODO: Continue monitoring switches in main loop
+    executeIdleMonitoring();
 }

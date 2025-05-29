@@ -18,7 +18,7 @@ const int CATCHER_SERVO_ACTIVE_POSITION = 90;   // Position when activated (degr
 //* ************************************************************************
 // Motor pulse width settings
 const int CUT_MOTOR_MIN_PULSE_WIDTH = 3;
-const int POSITION_MOTOR_MIN_PULSE_WIDTH = 35555efewnfefewfewfewowe;
+const int POSITION_MOTOR_MIN_PULSE_WIDTH = 3;
 
 // Motor step calculations and travel distances
 const int CUT_MOTOR_STEPS_PER_INCH = 500;  // 4x increase from 38
@@ -31,6 +31,10 @@ const float CUT_MOTOR_MAX_INCREMENTAL_MOVE_INCHES = 0.4; // Max inches for incre
 // Motor homing direction constants
 const int CUT_HOMING_DIRECTION = -1;
 const int POSITION_HOMING_DIRECTION = 1;
+
+// Motor homing distance constants
+const long CUT_MOTOR_HOMING_DISTANCE = 40000;      // Maximum distance to travel during homing
+const long POSITION_MOTOR_HOMING_DISTANCE = 10000; // Maximum distance to travel during homing (in steps)
 
 // Calculated motor positions
 const long CUT_MOTOR_CUT_POSITION = (long)(CUT_TRAVEL_DISTANCE * CUT_MOTOR_STEPS_PER_INCH);  // = 9.0 * 500 = 4500
@@ -82,6 +86,9 @@ const unsigned long WOOD_CAUGHT_CHECK_DELAY_MS = 1000; // 1 second delay to chec
 
 // Cut motor homing timeout
 const unsigned long CUT_HOME_TIMEOUT = 5000; // 5 seconds timeout
+
+// Position motor homing timeout
+const unsigned long POSITION_HOME_TIMEOUT = 30000; // 30 seconds timeout for position motor homing
 
 // Signal timing
 const unsigned long TA_SIGNAL_DURATION = 150; // Duration for Transfer Arm signal (ms)

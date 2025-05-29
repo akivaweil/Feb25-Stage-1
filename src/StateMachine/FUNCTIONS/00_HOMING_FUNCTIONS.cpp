@@ -1,6 +1,8 @@
 #include "StateMachine/StateMachine.h"
+#include "Config/Config.h"
 #include <FastAccelStepper.h>
 #include <Bounce2.h>
+#include "OTA_Manager.h"
 
 //* ************************************************************************
 //* ************************ HOMING FUNCTIONS *****************************
@@ -27,10 +29,12 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
     Serial.println("Homing cut motor...");
     unsigned long startTime = millis();
     cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_HOMING_SPEED);
-    cutMotor->moveTo(-40000);
+    cutMotor->moveTo(CUT_HOMING_DIRECTION * CUT_MOTOR_HOMING_DISTANCE);
 
     while (homingSwitch.read() != HIGH) {
         homingSwitch.update();
+        //! Handle OTA updates
+        handleOTA();
         yield(); // Prevent watchdog reset
         if (millis() - startTime > timeout) {
             Serial.println("Cut motor homing timeout!");
@@ -43,19 +47,27 @@ void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
     Serial.println("Cut motor homed to position 0");
 }
 
-void homePositionMotorBlocking(Bounce& homingSwitch) {
+void homePositionMotorBlocking(Bounce& homingSwitch, unsigned long timeout) {
     if (!positionMotor) return;
     
     Serial.println("Homing position motor...");
+    unsigned long startTime = millis();
     positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_HOMING_SPEED);
-    positionMotor->moveTo(10000 * POSITION_MOTOR_STEPS_PER_INCH);
+    positionMotor->moveTo(POSITION_HOMING_DIRECTION * POSITION_MOTOR_HOMING_DISTANCE * POSITION_MOTOR_STEPS_PER_INCH);
 
     while (homingSwitch.read() != HIGH) {
         homingSwitch.update();
+        //! Handle OTA updates
+        handleOTA();
         yield(); // Prevent watchdog reset
+        if (millis() - startTime > timeout) {
+            Serial.println("Position motor homing timeout!");
+            positionMotor->stopMove();
+            return;
+        }
     }
     positionMotor->stopMove();
-    positionMotor->setCurrentPosition(POSITION_TRAVEL_DISTANCE * POSITION_MOTOR_STEPS_PER_INCH);
+    positionMotor->setCurrentPosition(POSITION_MOTOR_TRAVEL_POSITION + 1.0 * POSITION_MOTOR_STEPS_PER_INCH);
     Serial.print("Position motor homed to position ");
     Serial.print(POSITION_TRAVEL_DISTANCE);
     Serial.println(" inches");
@@ -65,8 +77,10 @@ void homePositionMotorBlocking(Bounce& homingSwitch) {
     positionMotor->moveTo(POSITION_MOTOR_TRAVEL_POSITION);
     Serial.println("Moving to travel position...");
     while(positionMotor->isRunning()) {
+        //! Handle OTA updates
+        handleOTA();
         yield(); // Prevent watchdog reset
-        delay(10); // Small delay to prevent excessive loop iterations
+        delay(5); // Small delay to prevent excessive loop iterations
     }
     Serial.println("Position motor at travel position");
 }
@@ -81,10 +95,10 @@ void executeCompleteHomingSequence() {
     isHomed = false;
     
     // Home cut motor first
-    homeCutMotorBlocking(cutHomingSwitch, 30000); // 30 second timeout
+    homeCutMotorBlocking(cutHomingSwitch, CUT_HOME_TIMEOUT);
     
     // Home position motor second  
-    homePositionMotorBlocking(positionHomingSwitch);
+    homePositionMotorBlocking(positionHomingSwitch, POSITION_HOME_TIMEOUT);
     
     isHomed = true;
     Serial.println("=== HOMING SEQUENCE COMPLETE ===");

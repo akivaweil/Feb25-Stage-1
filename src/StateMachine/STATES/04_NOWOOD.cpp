@@ -21,40 +21,5 @@
 #include "../../../include/StateMachine/StateMachine.h"
 
 void nowood_state() {
-    //! ************************************************************************
-    //! STEP 1: RETRACT SECURE WOOD CLAMP
-    //! ************************************************************************
-    
-    // TODO: Retract the secure wood clamp
-    
-    //! ************************************************************************
-    //! STEP 2: MOVE POSITION MOTOR TO -1
-    //! ************************************************************************
-    
-    // TODO: Move position motor to -1 position
-    
-    //! ************************************************************************
-    //! STEP 3: RETURN CUT MOTOR TO 0 (SIMULTANEOUS WITH OTHER OPERATIONS)
-    //! ************************************************************************
-    
-    // TODO: Start returning cut motor to position 0
-    
-    //! ************************************************************************
-    //! STEP 4: RESET CLAMP POSITIONS
-    //! ************************************************************************
-    
-    // TODO: Retract position clamp
-    // TODO: Extend position clamp
-    
-    //! ************************************************************************
-    //! STEP 5: MOVE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE
-    //! ************************************************************************
-    
-    // TODO: Move position motor to POSITION_TRAVEL_DISTANCE
-    
-    //! ************************************************************************
-    //! STEP 6: RETURN TO IDLE STATE
-    //! ************************************************************************
-    
-    // TODO: Transition back to IDLE state
+    executeNowoodSequence();
 }

@@ -20,34 +20,5 @@
 #include "../../../include/StateMachine/StateMachine.h"
 
 void cutting_state() {
-    //! ************************************************************************
-    //! STEP 1: EXTEND BOTH CLAMPS
-    //! ************************************************************************
-    
-    // TODO: Extend both clamps simultaneously
-    
-    //! ************************************************************************
-    //! STEP 2: MOVE CUT MOTOR WITH SAFETY CHECK
-    //! ************************************************************************
-    
-    // TODO: Start moving cut motor to cut_travel_distance
-    // TODO: When 0.3 inches in, check waswoodsuctioned sensor
-    // TODO: If sensor reads LOW, stop and enter waswoodsuctioned error state
-    
-    //! ************************************************************************
-    //! STEP 3: ACTIVATE CATCHER MECHANISMS
-    //! ************************************************************************
-    
-    // TODO: When cut motor reaches CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES from end
-    // TODO: Activate catcher clamp function
-    // TODO: When cut motor reaches CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES from end  
-    // TODO: Activate catcher servo function
-    
-    //! ************************************************************************
-    //! STEP 4: CHECK WOOD SENSOR AND ROUTE
-    //! ************************************************************************
-    
-    // TODO: Check wood sensor pin
-    // TODO: If sensor reads LOW -> transition to YESWOOD state
-    // TODO: If sensor reads HIGH -> transition to NOWOOD state
+    executeCuttingSequence();
 }
