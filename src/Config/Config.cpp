@@ -18,7 +18,7 @@ const int CATCHER_SERVO_ACTIVE_POSITION = 90;   // Position when activated (degr
 //* ************************************************************************
 // Motor pulse width settings
 const int CUT_MOTOR_MIN_PULSE_WIDTH = 3;
-const int POSITION_MOTOR_MIN_PULSE_WIDTH = 35555efewnowe;
+const int POSITION_MOTOR_MIN_PULSE_WIDTH = 35555efewnfefewfewfewowe;
 
 // Motor step calculations and travel distances
 const int CUT_MOTOR_STEPS_PER_INCH = 500;  // 4x increase from 38
