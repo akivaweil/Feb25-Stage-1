@@ -54,6 +54,7 @@ bool errorAcknowledged = false;
 bool cuttingCycleInProgress = false;
 bool continuousModeActive = false;  // New flag for continuous operation
 bool startSwitchSafe = false;       // New flag to track if start switch is safe
+bool startSwitchSafeAfterNoWood = true;  // Flag to track safety after NOWOOD state
 bool woodCaughtCheckPending = false; // Flag to indicate when a wood caught check is scheduled
 unsigned long woodCaughtCheckTime = 0; // Time when the wood caught check should occur
 

@@ -105,11 +105,18 @@ void executeCUTTING() {
     //! ************************************************************************
     if (cutMotorMoving && cutMotor && !cutMotor->isRunning()) {
         woodSensor.update();
-        if (woodSensor.read() == LOW) {
-            Serial.println("!4. Wood sensor reads LOW - transitioning to YESWOOD state");
+        bool woodSensorReading = woodSensor.read();
+        Serial.print("!4. Wood sensor reading: ");
+        Serial.print(woodSensorReading ? "HIGH" : "LOW");
+        Serial.print(" (");
+        Serial.print(woodSensorReading);
+        Serial.println(")");
+        
+        if (woodSensorReading == LOW) {
+            Serial.println("Wood sensor reads LOW (wood detected) - transitioning to YESWOOD state");
             changeState(YESWOOD);
         } else {
-            Serial.println("!4. Wood sensor reads HIGH - transitioning to NOWOOD state");
+            Serial.println("Wood sensor reads HIGH (no wood detected) - transitioning to NOWOOD state");
             changeState(NOWOOD);
         }
         

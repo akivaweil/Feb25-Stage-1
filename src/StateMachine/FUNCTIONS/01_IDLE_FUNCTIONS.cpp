@@ -47,20 +47,33 @@ void handleReloadMode() {
 
 void handleStartSwitchSafety() {
     // Updated logic: Once switch goes OFF (LOW), it's safe to use
-    // This handles both cases: switch starting HIGH or LOW
+    // This handles both startup safety and post-NOWOOD safety
     extern bool startSwitchSafe;
+    extern bool startSwitchSafeAfterNoWood;
     extern Bounce startCycleSwitch;
     
     // If switch is currently OFF and we haven't marked it safe yet, mark it safe
-    if (!startSwitchSafe && startCycleSwitch.read() == LOW) {
-        startSwitchSafe = true;
-        Serial.println("Start switch is now safe to use (switch is OFF).");
+    if ((!startSwitchSafe || !startSwitchSafeAfterNoWood) && startCycleSwitch.read() == LOW) {
+        if (!startSwitchSafe) {
+            startSwitchSafe = true;
+            Serial.println("Startup safety cleared - switch is OFF");
+        }
+        if (!startSwitchSafeAfterNoWood) {
+            startSwitchSafeAfterNoWood = true;
+            Serial.println("Post-NOWOOD safety cleared - switch is OFF, reload acknowledged");
+        }
     }
     
     // Also handle the case where switch was ON and then turned OFF
-    if (!startSwitchSafe && startCycleSwitch.fell()) {
-        startSwitchSafe = true;
-        Serial.println("Start switch is now safe to use (cycled OFF).");
+    if ((!startSwitchSafe || !startSwitchSafeAfterNoWood) && startCycleSwitch.fell()) {
+        if (!startSwitchSafe) {
+            startSwitchSafe = true;
+            Serial.println("Startup safety cleared - switch cycled OFF");
+        }
+        if (!startSwitchSafeAfterNoWood) {
+            startSwitchSafeAfterNoWood = true;
+            Serial.println("Post-NOWOOD safety cleared - switch cycled OFF, reload acknowledged");
+        }
     }
 }
 

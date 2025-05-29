@@ -20,6 +20,7 @@ extern bool stateChanged;
 extern Bounce startCycleSwitch;
 extern Bounce reloadSwitch;
 extern bool startSwitchSafe;
+extern bool startSwitchSafeAfterNoWood;
 
 void executeIDLE() {
     //! ************************************************************************
@@ -37,12 +38,16 @@ void executeIDLE() {
     //! ************************************************************************
     startCycleSwitch.update();
     if (startCycleSwitch.read() == HIGH) {
-        if (startSwitchSafe) {
-            Serial.println("Start cycle switch HIGH and safe - transitioning to CUTTING state");
+        if (startSwitchSafe && startSwitchSafeAfterNoWood) {
+            Serial.println("Start cycle switch HIGH and all safety checks passed - transitioning to CUTTING state");
             changeState(CUTTING);
             return;
         } else {
-            Serial.println("Start cycle switch HIGH but NOT SAFE - Turn switch OFF first to enable safety");
+            if (!startSwitchSafe) {
+                Serial.println("Start cycle switch HIGH but startup safety NOT MET - Turn switch OFF first to enable safety");
+            } else if (!startSwitchSafeAfterNoWood) {
+                Serial.println("Start cycle switch HIGH but post-NOWOOD safety NOT MET - Turn switch OFF->ON to acknowledge reload");
+            }
         }
     }
     

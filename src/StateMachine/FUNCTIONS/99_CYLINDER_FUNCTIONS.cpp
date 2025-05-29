@@ -19,15 +19,15 @@ extern bool catcherClampIsEngaged;
 void extendClamp(ClampType clamp) {
     switch(clamp) {
         case POSITION_CLAMP_TYPE:
-            digitalWrite(POSITION_CLAMP, HIGH);
+            digitalWrite(POSITION_CLAMP, LOW);
             Serial.println("Position clamp extended");
             break;
         case WOOD_SECURE_CLAMP_TYPE:
-            digitalWrite(WOOD_SECURE_CLAMP, HIGH);
+            digitalWrite(WOOD_SECURE_CLAMP, LOW);
             Serial.println("Wood secure clamp extended");
             break;
         case CATCHER_CLAMP_TYPE:
-            digitalWrite(CATCHER_CLAMP_PIN, HIGH);
+            digitalWrite(CATCHER_CLAMP_PIN, LOW);
             catcherClampEngageTime = millis();
             catcherClampIsEngaged = true;
             Serial.println("Catcher clamp extended");
@@ -41,15 +41,15 @@ void extendClamp(ClampType clamp) {
 void retractClamp(ClampType clamp) {
     switch(clamp) {
         case POSITION_CLAMP_TYPE:
-            digitalWrite(POSITION_CLAMP, LOW);
+            digitalWrite(POSITION_CLAMP, HIGH);
             Serial.println("Position clamp retracted");
             break;
         case WOOD_SECURE_CLAMP_TYPE:
-            digitalWrite(WOOD_SECURE_CLAMP, LOW);
+            digitalWrite(WOOD_SECURE_CLAMP, HIGH);
             Serial.println("Wood secure clamp retracted");
             break;
         case CATCHER_CLAMP_TYPE:
-            digitalWrite(CATCHER_CLAMP_PIN, LOW);
+            digitalWrite(CATCHER_CLAMP_PIN, HIGH);
             catcherClampIsEngaged = false;
             Serial.println("Catcher clamp retracted");
             break;

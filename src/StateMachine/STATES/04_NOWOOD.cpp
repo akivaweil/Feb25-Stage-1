@@ -35,6 +35,11 @@ void executeNOWOOD() {
         Serial.println("=== NOWOOD STATE ENTERED ===");
         nowoodStateEntered = true;
         
+        // Set safety flag to require switch cycling before next cycle
+        extern bool startSwitchSafeAfterNoWood;
+        startSwitchSafeAfterNoWood = false;
+        Serial.println("Safety flag set - Start switch must be cycled OFF->ON before next cycle");
+        
         // Reset all state variables
         secureClampRetracted = false;
         positionMotorToMinusOne = false;
