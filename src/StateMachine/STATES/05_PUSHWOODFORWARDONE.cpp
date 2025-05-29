@@ -1,147 +1,76 @@
-#include "StateMachine/StateMachine.h"
-#include <FastAccelStepper.h>
-#include <Bounce2.h>
-
 //* ************************************************************************
-//* ************************ PUSHWOODFORWARD STATE ***********************
+//* ************************ PUSHWOODFORWARD STATE ***************************
 //* ************************************************************************
-//! PUSHWOODFORWARD state implementation - Push wood forward sequence
-//! 
-//! Step-by-step sequence:
-//! 1. Retract the position clamp
-//! 2. Move the position motor to 0
-//! 3. Extend the position clamp and retract the secure wood clamp
-//! 4. Wait 300ms 
-//! 5. Move the position motor to POSITION_TRAVEL_DISTANCE - 0.1
-//! 6. Retract the position clamp and extend the wood secure clamp
-//! 7. Wait 50ms
-//! 8. Move the position motor to POSITION_TRAVEL_DISTANCE
+//
+// DESCRIPTION: 
+// The PUSHWOODFORWARD state handles manually advancing wood forward:
+// - Retracts position clamp and returns position motor to 0
+// - Swaps clamp control to secure wood
+// - Advances wood position with timing delays
+// - Returns to position control for next operation
+//
+// STEP-BY-STEP PROCESS:
+// 1. Retract position clamp
+// 2. Move position motor to 0
+// 3. Extend position clamp and retract secure wood clamp
+// 4. Wait 300ms
+// 5. Move position motor to POSITION_TRAVEL_DISTANCE - 0.1
+// 6. Retract position clamp and extend secure wood clamp
+// 7. Wait 50ms
+// 8. Move position motor to POSITION_TRAVEL_DISTANCE
+//
+//* ************************************************************************
 
-// External variable declarations
-extern FastAccelStepper *positionMotor;
+#include "../../../include/StateMachine/StateMachine.h"
 
-// State variables
-static bool pushwoodStateEntered = false;
-static bool positionClampRetracted = false;
-static bool positionMotorToZero = false;
-static bool clampOperationsComplete = false;
-static bool firstWaitComplete = false;
-static bool positionMotorToTravelMinus = false;
-static bool secondClampOperationsComplete = false;
-static bool secondWaitComplete = false;
-static unsigned long firstWaitStartTime = 0;
-static unsigned long secondWaitStartTime = 0;
-
-void executePUSHWOODFORWARDONE() {
+void pushwoodforward_state() {
     //! ************************************************************************
-    //! STEP 1: RETRACT THE POSITION CLAMP
+    //! STEP 1: RETRACT POSITION CLAMP
     //! ************************************************************************
-    if (!pushwoodStateEntered) {
-        Serial.println("=== PUSHWOODFORWARD STATE ENTERED ===");
-        pushwoodStateEntered = true;
-        
-        // Reset all state variables
-        positionClampRetracted = false;
-        positionMotorToZero = false;
-        clampOperationsComplete = false;
-        firstWaitComplete = false;
-        positionMotorToTravelMinus = false;
-        secondClampOperationsComplete = false;
-        secondWaitComplete = false;
-        firstWaitStartTime = 0;
-        secondWaitStartTime = 0;
-        
-        Serial.println("!1. Retracting the position clamp");
-        retractClamp(POSITION_CLAMP_TYPE);
-        positionClampRetracted = true;
-    }
+    
+    // TODO: Retract the position clamp
     
     //! ************************************************************************
-    //! STEP 2: MOVE THE POSITION MOTOR TO 0
+    //! STEP 2: MOVE POSITION MOTOR TO 0
     //! ************************************************************************
-    if (positionClampRetracted && !positionMotorToZero) {
-        Serial.println("!2. Moving position motor to 0");
-        if (positionMotor) {
-            moveMotorTo(POSITION_MOTOR, 0, POSITION_MOTOR_NORMAL_SPEED);
-        }
-        positionMotorToZero = true;
-    }
+    
+    // TODO: Move position motor to position 0
     
     //! ************************************************************************
-    //! STEP 3: EXTEND POSITION CLAMP AND RETRACT SECURE WOOD CLAMP
+    //! STEP 3: SWAP CLAMP CONTROL
     //! ************************************************************************
-    if (positionMotorToZero && !clampOperationsComplete) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            Serial.println("!3. Extending position clamp and retracting secure wood clamp");
-            extendClamp(POSITION_CLAMP_TYPE);
-            retractClamp(WOOD_SECURE_CLAMP_TYPE);
-            clampOperationsComplete = true;
-            firstWaitStartTime = millis();
-        }
-    }
+    
+    // TODO: Extend position clamp
+    // TODO: Retract secure wood clamp
     
     //! ************************************************************************
     //! STEP 4: WAIT 300MS
     //! ************************************************************************
-    if (clampOperationsComplete && !firstWaitComplete) {
-        if (millis() - firstWaitStartTime >= 300) {
-            Serial.println("!4. 300ms wait complete");
-            firstWaitComplete = true;
-        }
-    }
+    
+    // TODO: Wait 300ms
     
     //! ************************************************************************
     //! STEP 5: MOVE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE - 0.1
     //! ************************************************************************
-    if (firstWaitComplete && !positionMotorToTravelMinus) {
-        float targetPosition = POSITION_TRAVEL_DISTANCE - 0.1f;
-        Serial.print("!5. Moving position motor to ");
-        Serial.print(targetPosition);
-        Serial.println(" inches");
-        
-        if (positionMotor) {
-            long targetSteps = (long)(targetPosition * STEPS_PER_INCH_POSITION);
-            moveMotorTo(POSITION_MOTOR, targetSteps, POSITION_MOTOR_NORMAL_SPEED);
-        }
-        positionMotorToTravelMinus = true;
-    }
+    
+    // TODO: Move position motor to POSITION_TRAVEL_DISTANCE - 0.1
     
     //! ************************************************************************
-    //! STEP 6: RETRACT POSITION CLAMP AND EXTEND WOOD SECURE CLAMP
+    //! STEP 6: SWAP CLAMP CONTROL BACK
     //! ************************************************************************
-    if (positionMotorToTravelMinus && !secondClampOperationsComplete) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            Serial.println("!6. Retracting position clamp and extending wood secure clamp");
-            retractClamp(POSITION_CLAMP_TYPE);
-            extendClamp(WOOD_SECURE_CLAMP_TYPE);
-            secondClampOperationsComplete = true;
-            secondWaitStartTime = millis();
-        }
-    }
+    
+    // TODO: Retract position clamp
+    // TODO: Extend secure wood clamp
     
     //! ************************************************************************
     //! STEP 7: WAIT 50MS
     //! ************************************************************************
-    if (secondClampOperationsComplete && !secondWaitComplete) {
-        if (millis() - secondWaitStartTime >= 50) {
-            Serial.println("!7. 50ms wait complete");
-            secondWaitComplete = true;
-        }
-    }
+    
+    // TODO: Wait 50ms
     
     //! ************************************************************************
     //! STEP 8: MOVE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE
     //! ************************************************************************
-    if (secondWaitComplete) {
-        Serial.println("!8. Moving position motor to POSITION_TRAVEL_DISTANCE");
-        if (positionMotor) {
-            moveMotorTo(POSITION_MOTOR, POSITION_MOTOR_TRAVEL_POSITION, POSITION_MOTOR_NORMAL_SPEED);
-        }
-        
-        // Reset state variables for next entry
-        pushwoodStateEntered = false;
-        
-        // Note: This state doesn't automatically transition - it completes the sequence
-        Serial.println("PUSHWOODFORWARD sequence complete");
-    }
-} 
+    
+    // TODO: Move position motor to POSITION_TRAVEL_DISTANCE
+}

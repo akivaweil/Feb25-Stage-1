@@ -1,113 +1,60 @@
-#include "StateMachine/StateMachine.h"
-#include <FastAccelStepper.h>
-#include <Bounce2.h>
-
 //* ************************************************************************
-//* ************************ NOWOOD STATE *********************************
+//* ************************ NOWOOD STATE ***************************
 //* ************************************************************************
-//! NOWOOD state implementation - Processing when no wood is detected
-//! 
-//! Step-by-step sequence:
-//! 1. Retract the secure wood clamp
-//! 2. Move the position motor to -1
-//! 3. Return the cut motor to position 0 (this should occur simultaneously with everything else)
-//! 4. Retract the position clamp and extend the position clamp
-//! 5. Move the position motor to POSITION_TRAVEL_DISTANCE
-//! 6. Return to idle state
+//
+// DESCRIPTION: 
+// The NOWOOD state handles the sequence when no wood is detected after cutting:
+// - Resets clamp positions and motors for next cycle
+// - Returns cut motor to home position
+// - Prepares machine for next operation
+//
+// STEP-BY-STEP PROCESS:
+// 1. Retract secure wood clamp
+// 2. Move position motor to -1 position
+// 3. Return cut motor to position 0 (simultaneous with other operations)
+// 4. Reset clamp positions (retract position, extend position)
+// 5. Move position motor to POSITION_TRAVEL_DISTANCE
+// 6. Return to IDLE state
+//
+//* ************************************************************************
 
-// External variable declarations
-extern FastAccelStepper *cutMotor;
-extern FastAccelStepper *positionMotor;
+#include "../../../include/StateMachine/StateMachine.h"
 
-// State variables
-static bool nowoodStateEntered = false;
-static bool secureClampRetracted = false;
-static bool positionMotorToMinusOne = false;
-static bool cutMotorReturnStarted = false;
-static bool clampOperationsComplete = false;
-static bool finalPositionMove = false;
-
-void executeNOWOOD() {
+void nowood_state() {
     //! ************************************************************************
-    //! STEP 1: RETRACT THE SECURE WOOD CLAMP
+    //! STEP 1: RETRACT SECURE WOOD CLAMP
     //! ************************************************************************
-    if (!nowoodStateEntered) {
-        Serial.println("=== NOWOOD STATE ENTERED ===");
-        nowoodStateEntered = true;
-        
-        // Set safety flag to require switch cycling before next cycle
-        extern bool startSwitchSafeAfterNoWood;
-        startSwitchSafeAfterNoWood = false;
-        Serial.println("Safety flag set - Start switch must be cycled OFF->ON before next cycle");
-        
-        // Reset all state variables
-        secureClampRetracted = false;
-        positionMotorToMinusOne = false;
-        cutMotorReturnStarted = false;
-        clampOperationsComplete = false;
-        finalPositionMove = false;
-        
-        Serial.println("!1. Retracting the secure wood clamp");
-        retractClamp(WOOD_SECURE_CLAMP_TYPE);
-        secureClampRetracted = true;
-    }
+    
+    // TODO: Retract the secure wood clamp
     
     //! ************************************************************************
-    //! STEP 2: MOVE THE POSITION MOTOR TO -1
+    //! STEP 2: MOVE POSITION MOTOR TO -1
     //! ************************************************************************
-    if (secureClampRetracted && !positionMotorToMinusOne) {
-        Serial.println("!2. Moving position motor to -1");
-        if (positionMotor) {
-            long targetSteps = (long)(-1.0f * STEPS_PER_INCH_POSITION);
-            moveMotorTo(POSITION_MOTOR, targetSteps, POSITION_MOTOR_NORMAL_SPEED);
-        }
-        positionMotorToMinusOne = true;
-    }
+    
+    // TODO: Move position motor to -1 position
     
     //! ************************************************************************
-    //! STEP 3: RETURN THE CUT MOTOR TO POSITION 0 (SIMULTANEOUS)
+    //! STEP 3: RETURN CUT MOTOR TO 0 (SIMULTANEOUS WITH OTHER OPERATIONS)
     //! ************************************************************************
-    if (positionMotorToMinusOne && !cutMotorReturnStarted) {
-        Serial.println("!3. Returning cut motor to position 0");
-        if (cutMotor) {
-            moveMotorTo(CUT_MOTOR, 0, CUT_MOTOR_RETURN_SPEED);
-            cutMotorReturnStarted = true;
-        }
-    }
+    
+    // TODO: Start returning cut motor to position 0
     
     //! ************************************************************************
-    //! STEP 4: RETRACT POSITION CLAMP AND EXTEND POSITION CLAMP
+    //! STEP 4: RESET CLAMP POSITIONS
     //! ************************************************************************
-    if (positionMotorToMinusOne && !clampOperationsComplete) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            Serial.println("!4. Retracting position clamp and extending position clamp");
-            retractClamp(POSITION_CLAMP_TYPE);
-            extendClamp(POSITION_CLAMP_TYPE);
-            clampOperationsComplete = true;
-        }
-    }
+    
+    // TODO: Retract position clamp
+    // TODO: Extend position clamp
     
     //! ************************************************************************
-    //! STEP 5: MOVE THE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE
+    //! STEP 5: MOVE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE
     //! ************************************************************************
-    if (clampOperationsComplete && !finalPositionMove) {
-        Serial.println("!5. Moving position motor to POSITION_TRAVEL_DISTANCE");
-        if (positionMotor) {
-            moveMotorTo(POSITION_MOTOR, POSITION_MOTOR_TRAVEL_POSITION, POSITION_MOTOR_NORMAL_SPEED);
-            finalPositionMove = true;
-        }
-    }
+    
+    // TODO: Move position motor to POSITION_TRAVEL_DISTANCE
     
     //! ************************************************************************
     //! STEP 6: RETURN TO IDLE STATE
     //! ************************************************************************
-    if (finalPositionMove) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            Serial.println("!6. Position motor movement complete - returning to IDLE state");
-            changeState(IDLE);
-            
-            // Reset state variables for next entry
-            nowoodStateEntered = false;
-        }
-    }
-} 
+    
+    // TODO: Transition back to IDLE state
+}

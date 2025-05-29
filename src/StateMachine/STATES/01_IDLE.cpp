@@ -1,63 +1,47 @@
-#include "StateMachine/StateMachine.h"
-#include <Bounce2.h>
-#include <Arduino.h>
-#include "OTA_Manager.h"
-
 //* ************************************************************************
-//* ************************ IDLE STATE ***********************************
+//* ************************ IDLE STATE ***************************
 //* ************************************************************************
-//! IDLE state implementation - Machine waiting and monitoring for input
-//! 
-//! Step-by-step sequence:
-//! 1. Check for OTA uploads
-//! 2. Handle start switch safety to prevent accidental startup
-//! 3. Check start cycle switch - if HIGH and switch is safe, switch to CUTTING state
-//! 4. Check reload switch - if HIGH, switch to RELOAD state
+//
+// DESCRIPTION: 
+// The IDLE state is the default waiting state where the machine checks for:
+// - OTA uploads
+// - Start cycle switch activation (HIGH) to enter CUTTING state
+// - Reload switch activation (HIGH) to enter RELOAD state
+//
+// STEP-BY-STEP PROCESS:
+// 1. Check for OTA uploads and handle if needed
+// 2. Check if start cycle switch is HIGH -> go to CUTTING state
+// 3. Check if reload switch is HIGH -> go to RELOAD state
+// 4. Continue monitoring in loop
+//
+//* ************************************************************************
 
-// External variable declarations
-extern SystemState currentState;
-extern bool stateChanged;
-extern Bounce startCycleSwitch;
-extern Bounce reloadSwitch;
-extern bool startSwitchSafe;
-extern bool startSwitchSafeAfterNoWood;
+#include "../../../include/StateMachine/StateMachine.h"
 
-void executeIDLE() {
+void idle_state() {
     //! ************************************************************************
     //! STEP 1: CHECK FOR OTA UPLOADS
     //! ************************************************************************
-    handleOTA();
+    
+    // TODO: Add OTA upload check functionality
     
     //! ************************************************************************
-    //! STEP 2: HANDLE START SWITCH SAFETY
+    //! STEP 2: CHECK START CYCLE SWITCH
     //! ************************************************************************
-    handleStartSwitchSafety();
+    
+    // TODO: Check if start cycle switch is HIGH
+    // TODO: If HIGH, transition to CUTTING state
     
     //! ************************************************************************
-    //! STEP 3: CHECK START CYCLE SWITCH (WITH SAFETY CHECK)
+    //! STEP 3: CHECK RELOAD SWITCH
     //! ************************************************************************
-    startCycleSwitch.update();
-    if (startCycleSwitch.read() == HIGH) {
-        if (startSwitchSafe && startSwitchSafeAfterNoWood) {
-            Serial.println("Start cycle switch HIGH and all safety checks passed - transitioning to CUTTING state");
-            changeState(CUTTING);
-            return;
-        } else {
-            if (!startSwitchSafe) {
-                Serial.println("Start cycle switch HIGH but startup safety NOT MET - Turn switch OFF first to enable safety");
-            } else if (!startSwitchSafeAfterNoWood) {
-                Serial.println("Start cycle switch HIGH but post-NOWOOD safety NOT MET - Turn switch OFF->ON to acknowledge reload");
-            }
-        }
-    }
+    
+    // TODO: Check if reload switch is HIGH  
+    // TODO: If HIGH, transition to RELOAD state
     
     //! ************************************************************************
-    //! STEP 4: CHECK RELOAD SWITCH
+    //! STEP 4: CONTINUE MONITORING LOOP
     //! ************************************************************************
-    reloadSwitch.update();
-    if (reloadSwitch.read() == HIGH) {
-        Serial.println("Reload switch HIGH - transitioning to RELOAD state");
-        changeState(RELOAD);
-        return;
-    }
-} 
+    
+    // TODO: Continue monitoring switches in main loop
+}

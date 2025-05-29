@@ -1,76 +1,46 @@
-#include "StateMachine/StateMachine.h"
-#include <Bounce2.h>
-#include <Arduino.h>
+#include "../../../include/StateMachine/StateMachine.h"
 
 //* ************************************************************************
-//* ************************ RELOAD STATE **********************************
+//* ************************ RELOAD STATE ***************************
 //* ************************************************************************
-//! RELOAD state implementation
-//! System enters safe reload mode for manual wood loading/unloading
-//! All clamps retracted, system safe for manual intervention
+//
+// DESCRIPTION: 
+// The RELOAD state provides a safe mode for manual wood loading/unloading:
+// - Retracts all clamps for safe manual access
+// - Monitors reload switch for exit condition
+// - Returns to IDLE when reload switch is turned OFF
+//
+// STEP-BY-STEP PROCESS:
+// 1. Retract all clamps for safe manual access
+// 2. Set reload mode flag
+// 3. Monitor reload switch continuously
+// 4. When reload switch turns OFF, re-engage clamps and return to IDLE
+//
+//* ************************************************************************
 
-// External variable declarations
-extern SystemState currentState;
-extern bool stateChanged;
-extern Bounce reloadSwitch;
-extern bool isReloadMode;
-
-void executeRELOAD() {
-    static bool entryExecuted = false;
+void reload_state() {
+    //! ************************************************************************
+    //! STEP 1: RETRACT ALL CLAMPS FOR SAFE ACCESS
+    //! ************************************************************************
+    
+    // TODO: Retract position clamp
+    // TODO: Retract wood secure clamp
+    // TODO: Set reload mode flag
     
     //! ************************************************************************
-    //! STEP 1: EXECUTE ENTRY ACTIONS (ONLY ONCE WHEN ENTERING STATE)
+    //! STEP 2: MONITOR RELOAD SWITCH
     //! ************************************************************************
-    if (stateChanged && !entryExecuted) {
-        Serial.println("=== ENTERING RELOAD STATE ===");
-        Serial.println("System entering safe reload mode");
-        Serial.println("All clamps retracting for manual intervention");
-        
-        // Set reload mode flag
-        isReloadMode = true;
-        
-        // Retract clamps for safe manual access (excluding catcher clamp - not needed for reload)
-        retractClamp(POSITION_CLAMP_TYPE);
-        retractClamp(WOOD_SECURE_CLAMP_TYPE);
-        
-        // Set entry flags
-        entryExecuted = true;
-        stateChanged = false;
-        
-        Serial.println("RELOAD state entry complete - system safe for manual operation");
-        Serial.println("Turn OFF reload switch to exit reload mode");
-    }
+    
+    // TODO: Update reload switch state
+    // TODO: Check if reload switch is turned OFF (LOW)
     
     //! ************************************************************************
-    //! STEP 2: RESET ENTRY FLAG WHEN LEAVING STATE
+    //! STEP 3: EXIT RELOAD MODE
     //! ************************************************************************
-    if (currentState != RELOAD) {
-        entryExecuted = false;
-        isReloadMode = false;
-        return;
-    }
     
-    //! ************************************************************************
-    //! STEP 3: UPDATE RELOAD SWITCH STATE
-    //! ************************************************************************
-    reloadSwitch.update();
-    
-    //! ************************************************************************
-    //! STEP 4: MONITOR RELOAD SWITCH FOR EXIT CONDITION
-    //! ************************************************************************
-    if (reloadSwitch.read() == LOW) {
-        Serial.println("Reload switch turned OFF - exiting reload mode");
-        Serial.println("Re-engaging clamps");
-        
-        // Clear reload mode flag
-        isReloadMode = false;
-        
-        // Re-engage clamps for normal operation
-        extendClamp(POSITION_CLAMP_TYPE);
-        extendClamp(WOOD_SECURE_CLAMP_TYPE);
-        
-        Serial.println("Exiting reload mode - returning to IDLE state");
-        changeState(IDLE);
-        return;
-    }
-} 
+    // TODO: When reload switch turns OFF:
+    // TODO: Clear reload mode flag
+    // TODO: Re-engage position clamp
+    // TODO: Re-engage wood secure clamp
+    // TODO: Return to IDLE state
+}

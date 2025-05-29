@@ -1,126 +1,53 @@
-#include "StateMachine/StateMachine.h"
-#include <FastAccelStepper.h>
-#include <Bounce2.h>
-
 //* ************************************************************************
-//* ************************ CUTTING STATE ********************************
+//* ************************ CUTTING STATE ***************************
 //* ************************************************************************
-//! CUTTING state implementation - Execute cutting sequence with wood detection
-//! 
-//! Step-by-step sequence:
-//! 1. Extend both clamps 
-//! 2. Move the cut motor to CUT_TRAVEL_DISTANCE. When 0.3 inches in, check if waswoodsuctioned sensor reads low - if so, stop and enter waswoodsuctioned error state
-//! 3. When cut motor reaches CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES and CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES distances away from end, activate accordingly
-//! 4. Decide whether to move to yeswood or nowood states based on wood sensor pin
+//
+// DESCRIPTION: 
+// The CUTTING state handles the main cutting operation sequence:
+// - Extends both clamps to secure wood
+// - Moves cut motor through cutting motion with safety checks
+// - Activates catcher mechanisms at specified distances
+// - Routes to YESWOOD or NOWOOD states based on wood sensor
+//
+// STEP-BY-STEP PROCESS:
+// 1. Extend both clamps simultaneously
+// 2. Move cut motor to cut_travel_distance with safety check at 0.3"
+// 3. Activate catcher clamp and servo when reaching early activation offsets
+// 4. Check wood sensor and route to YESWOOD (sensor LOW) or NOWOOD (sensor HIGH)
+//
+//* ************************************************************************
 
-// External variable declarations
-extern FastAccelStepper *cutMotor;
-extern Bounce woodSensor;
-extern Bounce wasWoodSuctionedSensor;
+#include "../../../include/StateMachine/StateMachine.h"
 
-// State variables
-static bool cuttingStateEntered = false;
-static bool clampsExtended = false;
-static bool cutMotorMoving = false;
-static bool woodSuctionChecked = false;
-static bool catcherClampActivated = false;
-static bool catcherServoActivated = false;
-
-void executeCUTTING() {
+void cutting_state() {
     //! ************************************************************************
     //! STEP 1: EXTEND BOTH CLAMPS
     //! ************************************************************************
-    if (!cuttingStateEntered) {
-        Serial.println("=== CUTTING STATE ENTERED ===");
-        cuttingStateEntered = true;
-        
-        // Reset all state variables
-        clampsExtended = false;
-        cutMotorMoving = false;
-        woodSuctionChecked = false;
-        catcherClampActivated = false;
-        catcherServoActivated = false;
-        
-        Serial.println("!1. Extending both clamps");
-        extendClamp(POSITION_CLAMP_TYPE);
-        extendClamp(WOOD_SECURE_CLAMP_TYPE);
-        clampsExtended = true;
-    }
+    
+    // TODO: Extend both clamps simultaneously
     
     //! ************************************************************************
-    //! STEP 2: MOVE CUT MOTOR TO CUT_TRAVEL_DISTANCE
+    //! STEP 2: MOVE CUT MOTOR WITH SAFETY CHECK
     //! ************************************************************************
-    if (clampsExtended && !cutMotorMoving) {
-        Serial.println("!2. Moving cut motor to cut travel distance");
-        if (cutMotor) {
-            moveMotorTo(CUT_MOTOR, CUT_MOTOR_CUT_POSITION, CUT_MOTOR_NORMAL_SPEED);
-            cutMotorMoving = true;
-        }
-    }
+    
+    // TODO: Start moving cut motor to cut_travel_distance
+    // TODO: When 0.3 inches in, check waswoodsuctioned sensor
+    // TODO: If sensor reads LOW, stop and enter waswoodsuctioned error state
     
     //! ************************************************************************
-    //! WOOD SUCTION CHECK AT 0.3 INCHES
+    //! STEP 3: ACTIVATE CATCHER MECHANISMS
     //! ************************************************************************
-    if (cutMotorMoving && !woodSuctionChecked) {
-        if (cutMotor) {
-            float currentPosition = (float)cutMotor->getCurrentPosition() / CUT_MOTOR_STEPS_PER_INCH;
-            if (currentPosition >= 0.3f) {
-                wasWoodSuctionedSensor.update();
-                if (wasWoodSuctionedSensor.read() == LOW) {
-                    Serial.println("ERROR: Wood suction sensor reads LOW at 0.3 inches - entering waswoodsuctioned error state");
-                    forceTriggerWoodSuctionError();
-                    // Reset state variables for next entry
-                    cuttingStateEntered = false;
-                    return;
-                }
-                woodSuctionChecked = true;
-            }
-        }
-    }
+    
+    // TODO: When cut motor reaches CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES from end
+    // TODO: Activate catcher clamp function
+    // TODO: When cut motor reaches CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES from end  
+    // TODO: Activate catcher servo function
     
     //! ************************************************************************
-    //! STEP 3: CATCHER CLAMP AND SERVO EARLY ACTIVATION
+    //! STEP 4: CHECK WOOD SENSOR AND ROUTE
     //! ************************************************************************
-    if (cutMotorMoving && cutMotor) {
-        float currentPosition = (float)cutMotor->getCurrentPosition() / CUT_MOTOR_STEPS_PER_INCH;
-        float distanceFromEnd = CUT_TRAVEL_DISTANCE - currentPosition;
-        
-        // Activate catcher clamp at early activation offset
-        if (!catcherClampActivated && distanceFromEnd <= CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES) {
-            Serial.println("!3a. Activating catcher clamp at early activation offset");
-            extendClamp(CATCHER_CLAMP_TYPE);
-            catcherClampActivated = true;
-        }
-        
-        // Activate catcher servo at early activation offset
-        if (!catcherServoActivated && distanceFromEnd <= CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES) {
-            Serial.println("!3b. Activating catcher servo at early activation offset");
-            activateCatcherServo();
-            catcherServoActivated = true;
-        }
-    }
     
-    //! ************************************************************************
-    //! STEP 4: DECIDE NEXT STATE BASED ON WOOD SENSOR
-    //! ************************************************************************
-    if (cutMotorMoving && cutMotor && !cutMotor->isRunning()) {
-        woodSensor.update();
-        bool woodSensorReading = woodSensor.read();
-        Serial.print("!4. Wood sensor reading: ");
-        Serial.print(woodSensorReading ? "HIGH" : "LOW");
-        Serial.print(" (");
-        Serial.print(woodSensorReading);
-        Serial.println(")");
-        
-        if (woodSensorReading == LOW) {
-            Serial.println("Wood sensor reads LOW (wood detected) - transitioning to YESWOOD state");
-            changeState(YESWOOD);
-        } else {
-            Serial.println("Wood sensor reads HIGH (no wood detected) - transitioning to NOWOOD state");
-            changeState(NOWOOD);
-        }
-        
-        // Reset state variables for next entry
-        cuttingStateEntered = false;
-    }
-} 
+    // TODO: Check wood sensor pin
+    // TODO: If sensor reads LOW -> transition to YESWOOD state
+    // TODO: If sensor reads HIGH -> transition to NOWOOD state
+}

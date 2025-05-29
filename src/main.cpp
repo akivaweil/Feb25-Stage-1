@@ -202,7 +202,6 @@ void setup() {
 
 void loop() {
   // Re-enable state machine to test if it causes watchdog reset issue
-  Serial.println("Loop starting - testing state machine...");
   
   // Execute the state machine
   updateStateMachine();
@@ -214,7 +213,5 @@ void loop() {
   yield();
   
   // Add delay to slow down debug output
-  delay(500);
-  
-  Serial.println("Loop completed successfully");
+  delay(5);
 } 

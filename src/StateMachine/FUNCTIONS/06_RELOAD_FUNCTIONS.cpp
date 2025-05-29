@@ -1,12 +1,12 @@
 #include "../../../include/StateMachine/StateMachine.h"
 
 //* ************************************************************************
-//* ************************ IDLE FUNCTIONS ***************************
+//* ************************ RELOAD FUNCTIONS ***************************
 //* ************************************************************************
-//! IDLE-specific functions for system monitoring and state transitions
-//! Functions dedicated to the IDLE state operations
+//! Reload-specific functions for safe manual wood loading/unloading
+//! Functions dedicated to the RELOAD state
 //! 
-//! NOTE: The current IDLE state implementation uses only core motor and clamp
+//! NOTE: The current RELOAD state implementation uses only core motor and clamp
 //! functions from the 99_ files. This file is kept for future expansion if needed.
 
 // No functions currently needed - all operations use core functions from 99_ files 

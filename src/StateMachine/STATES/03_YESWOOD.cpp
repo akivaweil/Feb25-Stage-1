@@ -1,184 +1,79 @@
-#include "StateMachine/StateMachine.h"
-#include <FastAccelStepper.h>
-#include <Bounce2.h>
-
 //* ************************************************************************
-//* ************************ YESWOOD STATE ********************************
+//* ************************ YESWOOD STATE ***************************
 //* ************************************************************************
-//! YESWOOD state implementation - Processing detected wood with positioning sequence
-//! 
-//! Step-by-step sequence:
-//! 1. Return the cut motor to position 0 (this should occur simultaneously with everything else)
-//! 2. Retract the secure wood clamp
-//! 3. Move the position motor to POSITION_TRAVEL_DISTANCE - 0.1
-//! 4. Extend the secure wood clamp and retract the position clamp
-//! 5. Move the position clamp to position 0
-//! 6. As soon as the position motor reaches 0, the position clamp should extend
-//! 7. Wait until the cut motor is home. 10ms after the cut motor reports that is at position 0, check the cut motor homing sensor. If it reads low then enter the cutmotorfailedtohome error state
-//! 8. Do another check that the cut motor is home by putting this inside an if statement: move the position motor to POSITION_TRAVEL_DISTANCE
-//! 9. Check if the run cycle switch is HIGH if yes then switch to the cutting state, if not, then return to idle state
+//
+// DESCRIPTION: 
+// The YESWOOD state handles the sequence when wood is successfully cut:
+// - Returns cut motor to home while managing clamps
+// - Advances wood position for next cut
+// - Performs safety checks and prepares for next cycle
+//
+// STEP-BY-STEP PROCESS:
+// 1. Return cut motor to position 0 (simultaneous with other operations)
+// 2. Retract secure wood clamp
+// 3. Move position motor to POSITION_TRAVEL_DISTANCE - 0.1
+// 4. Swap clamp positions (extend secure, retract position)
+// 5. Return position motor to 0 and extend position clamp when home
+// 6. Wait for cut motor home and verify with sensor check
+// 7. Advance position motor to POSITION_TRAVEL_DISTANCE  
+// 8. Check run cycle switch and route accordingly
+//
+//* ************************************************************************
 
-// External variable declarations
-extern FastAccelStepper *cutMotor;
-extern FastAccelStepper *positionMotor;
-extern Bounce cutHomingSwitch;
-extern Bounce startCycleSwitch;
+#include "../../../include/StateMachine/StateMachine.h"
 
-// State variables
-static bool yeswoodStateEntered = false;
-static bool cutMotorReturnStarted = false;
-static bool secureClampRetracted = false;
-static bool positionMotorToTravelMinus = false;
-static bool clampOperationsComplete = false;
-static bool positionMotorToZero = false;
-static bool positionClampExtended = false;
-static bool cutMotorHomeChecked = false;
-static bool cutMotorHomingWaitStarted = false;
-static bool finalPositionMotorMove = false;
-static unsigned long cutMotorZeroTime = 0;
-static const unsigned long CUT_MOTOR_HOME_CHECK_DELAY = 10; // 10ms delay
-
-void executeYESWOOD() {
+void yeswood_state() {
     //! ************************************************************************
-    //! STEP 1: RETURN CUT MOTOR TO 0 AND RETRACT SECURE CLAMP (SIMULTANEOUS)
+    //! STEP 1: RETURN CUT MOTOR TO 0 (SIMULTANEOUS WITH OTHER OPERATIONS)
     //! ************************************************************************
-    if (!yeswoodStateEntered) {
-        Serial.println("=== YESWOOD STATE ENTERED ===");
-        yeswoodStateEntered = true;
-        
-        // Reset all state variables
-        cutMotorReturnStarted = false;
-        secureClampRetracted = false;
-        positionMotorToTravelMinus = false;
-        clampOperationsComplete = false;
-        positionMotorToZero = false;
-        positionClampExtended = false;
-        cutMotorHomeChecked = false;
-        cutMotorHomingWaitStarted = false;
-        finalPositionMotorMove = false;
-        cutMotorZeroTime = 0;
-        
-        Serial.println("!1. Returning cut motor to position 0 and retracting secure wood clamp simultaneously");
-        
-        // Start cut motor return to position 0
-        if (cutMotor) {
-            moveMotorTo(CUT_MOTOR, 0, CUT_MOTOR_RETURN_SPEED);
-            cutMotorReturnStarted = true;
-        }
-        
-        // Retract secure wood clamp simultaneously
-        retractClamp(WOOD_SECURE_CLAMP_TYPE);
-        secureClampRetracted = true;
-    }
+    
+    // TODO: Start returning cut motor to position 0
+    
+    //! ************************************************************************
+    //! STEP 2: RETRACT SECURE WOOD CLAMP
+    //! ************************************************************************
+    
+    // TODO: Retract the secure wood clamp
     
     //! ************************************************************************
     //! STEP 3: MOVE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE - 0.1
     //! ************************************************************************
-    if (secureClampRetracted && !positionMotorToTravelMinus) {
-        float targetPosition = POSITION_TRAVEL_DISTANCE - 0.1f;
-        Serial.print("!3. Moving position motor to ");
-        Serial.print(targetPosition);
-        Serial.println(" inches");
-        
-        if (positionMotor) {
-            long targetSteps = (long)(targetPosition * STEPS_PER_INCH_POSITION);
-            moveMotorTo(POSITION_MOTOR, targetSteps, POSITION_MOTOR_NORMAL_SPEED);
-        }
-        positionMotorToTravelMinus = true;
-    }
+    
+    // TODO: Move position motor to POSITION_TRAVEL_DISTANCE - 0.1
     
     //! ************************************************************************
-    //! STEP 4: EXTEND SECURE CLAMP AND RETRACT POSITION CLAMP
+    //! STEP 4: SWAP CLAMP POSITIONS
     //! ************************************************************************
-    if (positionMotorToTravelMinus && !clampOperationsComplete) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            Serial.println("!4. Extending secure wood clamp and retracting position clamp");
-            extendClamp(WOOD_SECURE_CLAMP_TYPE);
-            retractClamp(POSITION_CLAMP_TYPE);
-            clampOperationsComplete = true;
-        }
-    }
+    
+    // TODO: Extend secure wood clamp
+    // TODO: Retract position clamp
     
     //! ************************************************************************
-    //! STEP 5: MOVE POSITION MOTOR TO POSITION 0
+    //! STEP 5: RETURN POSITION MOTOR TO 0
     //! ************************************************************************
-    if (clampOperationsComplete && !positionMotorToZero) {
-        Serial.println("!5. Moving position motor to position 0");
-        if (positionMotor) {
-            moveMotorTo(POSITION_MOTOR, 0, POSITION_MOTOR_NORMAL_SPEED);
-        }
-        positionMotorToZero = true;
-    }
+    
+    // TODO: Move position motor to position 0
+    // TODO: When position motor reaches 0, extend position clamp
     
     //! ************************************************************************
-    //! STEP 6: EXTEND POSITION CLAMP AS SOON AS MOTOR REACHES 0
+    //! STEP 6: WAIT FOR CUT MOTOR HOME AND VERIFY
     //! ************************************************************************
-    if (positionMotorToZero && !positionClampExtended) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            Serial.println("!6. Position motor reached 0 - extending position clamp");
-            extendClamp(POSITION_CLAMP_TYPE);
-            positionClampExtended = true;
-        }
-    }
+    
+    // TODO: Wait until cut motor is home
+    // TODO: 10ms after cut motor reports position 0, check homing sensor
+    // TODO: If homing sensor reads LOW, enter cutmotorfailedtohome error state
     
     //! ************************************************************************
-    //! STEP 7: WAIT FOR CUT MOTOR HOME AND VERIFY WITH SENSOR
+    //! STEP 7: FINAL HOME CHECK AND ADVANCE
     //! ************************************************************************
-    if (positionClampExtended && !cutMotorHomeChecked) {
-        if (cutMotor) {
-            // Check if cut motor has reached position 0
-            if (!cutMotorHomingWaitStarted && cutMotor->getCurrentPosition() == 0) {
-                Serial.println("!7. Cut motor reports position 0 - starting 10ms verification timer");
-                cutMotorZeroTime = millis();
-                cutMotorHomingWaitStarted = true;
-            }
-            
-            // After 10ms delay, check the homing sensor
-            if (cutMotorHomingWaitStarted && (millis() - cutMotorZeroTime >= CUT_MOTOR_HOME_CHECK_DELAY)) {
-                cutHomingSwitch.update();
-                if (cutHomingSwitch.read() == LOW) {
-                    Serial.println("ERROR: Cut motor homing sensor reads LOW - entering cutmotorfailedtohome error state");
-                    triggerCutMotorHomeError();
-                    // Reset state variables for next entry
-                    yeswoodStateEntered = false;
-                    return;
-                } else {
-                    Serial.println("Cut motor homing sensor verification passed");
-                    cutMotorHomeChecked = true;
-                }
-            }
-        }
-    }
+    
+    // TODO: Inside if statement: move position motor to POSITION_TRAVEL_DISTANCE
     
     //! ************************************************************************
-    //! STEP 8: FINAL VERIFICATION AND MOVE TO POSITION_TRAVEL_DISTANCE
+    //! STEP 8: CHECK RUN CYCLE SWITCH AND ROUTE
     //! ************************************************************************
-    if (cutMotorHomeChecked && !finalPositionMotorMove) {
-        if (cutMotor && cutMotor->getCurrentPosition() == 0) {
-            Serial.println("!8. Final cut motor home verification passed - moving position motor to travel distance");
-            if (positionMotor) {
-                moveMotorTo(POSITION_MOTOR, POSITION_MOTOR_TRAVEL_POSITION, POSITION_MOTOR_NORMAL_SPEED);
-            }
-            finalPositionMotorMove = true;
-        }
-    }
     
-    //! ************************************************************************
-    //! STEP 9: CHECK RUN CYCLE SWITCH AND TRANSITION
-    //! ************************************************************************
-    if (finalPositionMotorMove) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            startCycleSwitch.update();
-            if (startCycleSwitch.read() == HIGH) {
-                Serial.println("!9. Run cycle switch is HIGH - transitioning to CUTTING state");
-                changeState(CUTTING);
-            } else {
-                Serial.println("!9. Run cycle switch is LOW - returning to IDLE state");
-                changeState(IDLE);
-            }
-            
-            // Reset state variables for next entry
-            yeswoodStateEntered = false;
-        }
-    }
-} 
+    // TODO: Check if run cycle switch is HIGH
+    // TODO: If HIGH -> transition to CUTTING state
+    // TODO: If not HIGH -> return to IDLE state
+}
