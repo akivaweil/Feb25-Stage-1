@@ -1,5 +1,5 @@
 #include "StateMachine/StateMachine.h"
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 #include <Bounce2.h>
 #include <Arduino.h>
 
@@ -10,7 +10,7 @@
 //! Functions for detecting, handling, and recovering from cut motor homing errors
 
 // External variable declarations
-extern FastAccelStepper *cutMotor;
+extern AccelStepper cutMotor;
 extern Bounce cutHomingSwitch;
 extern SystemState currentState;
 extern bool isHomed;
@@ -30,7 +30,7 @@ const unsigned long HOMING_TIMEOUT_MS = 30000; // 30 seconds timeout
 //* ************************************************************************
 
 void checkCutMotorHomingTimeout() {
-    if (currentState == HOMING && cutMotor && cutMotor->isRunning()) {
+    if (currentState == HOMING && cutMotor.distanceToGo() != 0) {
         if (millis() - homingStartTime > HOMING_TIMEOUT_MS) {
             cutMotorFailedtoHomeError = true;
             cutMotorHomeErrorDetected = true;
@@ -38,13 +38,14 @@ void checkCutMotorHomingTimeout() {
             Serial.println("ERROR: Cut motor homing timeout - CutMotorFailedtoHomeError detected");
             
             // Stop the motor immediately
-            cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
+            cutMotor.stop();
+            cutMotor.setCurrentPosition(cutMotor.currentPosition());
         }
     }
 }
 
 void checkCutMotorHomingFailure() {
-    if (currentState == HOMING && cutMotor && !cutMotor->isRunning()) {
+    if (currentState == HOMING && cutMotor.distanceToGo() == 0) {
         // Motor stopped but home switch not triggered
         cutHomingSwitch.update();
         if (cutHomingSwitch.read() != HIGH) {
@@ -78,9 +79,8 @@ void handleCutMotorHomeError() {
         Serial.println("Handling cut motor homing error...");
         
         // Stop the cut motor immediately
-        if (cutMotor) {
-            cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
-        }
+        cutMotor.stop();
+        cutMotor.setCurrentPosition(cutMotor.currentPosition());
         
         // Stop position motor as well for safety
         stopPositionMotor();
@@ -150,19 +150,18 @@ void attemptCutMotorHomeRecovery() {
         Serial.println("Attempting cut motor homing recovery...");
         
         // Move motor slightly away from current position
-        if (cutMotor) {
-            cutMotor->move(1000); // Move 1000 steps away
-            while (cutMotor->isRunning()) {
-                delay(10);
-            }
-            
-            // Reset error flags for retry
-            resetCutMotorHomeError();
-            
-            // Start new homing attempt
-            startCutMotorHomingWithErrorDetection();
-            homeCutMotorBlocking(cutHomingSwitch, 30000); // Use new blocking homing function
+        cutMotor.move(1000); // Move 1000 steps away
+        while (cutMotor.distanceToGo() != 0) {
+            cutMotor.run();
+            delay(10);
         }
+        
+        // Reset error flags for retry
+        resetCutMotorHomeError();
+        
+        // Start new homing attempt
+        startCutMotorHomingWithErrorDetection();
+        homeCutMotorBlocking(cutHomingSwitch, 30000); // Use new blocking homing function
     } else if (cutMotorHomingAttempts >= MAX_HOMING_ATTEMPTS) {
         Serial.println("Cut motor homing recovery failed - maximum attempts exceeded");
     }
@@ -188,7 +187,7 @@ void printCutMotorHomeErrorStatus() {
     cutHomingSwitch.update();
     Serial.println(cutHomingSwitch.read() == HIGH ? "ACTIVE" : "INACTIVE");
     Serial.print("Cut Motor Running: ");
-    Serial.println(cutMotor && cutMotor->isRunning() ? "YES" : "NO");
+    Serial.println(cutMotor.distanceToGo() != 0 ? "YES" : "NO");
     Serial.println("=====================================");
 }
 
@@ -203,10 +202,20 @@ void triggerCutMotorHomeError() {
     Serial.println("ERROR: Cut motor homing error triggered manually - CutMotorFailedtoHomeError activated");
     
     // Stop the cut motor immediately
-    if (cutMotor) {
-        cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
-    }
+    cutMotor.stop();
+    cutMotor.setCurrentPosition(cutMotor.currentPosition());
     
     // Transition to ERROR state
     changeState(ERROR);
+}
+
+void forceTriggerCutMotorHomeError() {
+    cutMotorFailedtoHomeError = true;
+    cutMotorHomeErrorDetected = true;
+    cutMotorHomeErrorTime = millis();
+    Serial.println("Cut motor homing error manually triggered");
+    
+    // Stop the cut motor immediately
+    cutMotor.stop();
+    cutMotor.setCurrentPosition(cutMotor.currentPosition());
 } 

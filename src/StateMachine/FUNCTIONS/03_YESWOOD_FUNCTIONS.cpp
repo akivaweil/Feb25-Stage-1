@@ -1,14 +1,14 @@
-#include "../../../include/StateMachine/StateMachine.h"
+#include "StateMachine/StateMachine.h"
 #include "Config/Config.h"
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 #include <Bounce2.h>
 
 // External variable declarations
-extern FastAccelStepper *cutMotor;
-extern FastAccelStepper *positionMotor;
+extern AccelStepper cutMotor;
+extern AccelStepper positionMotor;
 extern Bounce cutHomingSwitch;
-extern Bounce runCycleSwitch;
-extern StateType currentState;
+extern Bounce startCycleSwitch;
+extern SystemState currentState;
 
 //* ************************************************************************
 //* ************************ YESWOOD FUNCTIONS ***************************
@@ -21,14 +21,9 @@ extern StateType currentState;
 //* ************************ MOTOR RETURN OPERATIONS FOR YESWOOD *********
 //* ************************************************************************
 
-void startCutMotorReturnForYeswood() {
-    if (!cutMotor) {
-        Serial.println("ERROR: Cut motor not initialized");
-        return;
-    }
-    
-    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_RETURN_SPEED);
-    cutMotor->moveTo(0);
+void returnCutMotorToHomeForYeswood() {
+    cutMotor.setSpeed(CUT_MOTOR_RETURN_SPEED);
+    cutMotor.moveTo(0);
     Serial.println("YESWOOD: Cut motor returning to home position");
 }
 
@@ -37,16 +32,11 @@ void retractSecureClampForYeswood() {
     Serial.println("YESWOOD: Secure wood clamp retracted");
 }
 
-void movePositionMotorToAdvancePositionForYeswood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
+void advancePositionMotorForYeswood() {
     // Move to POSITION_TRAVEL_DISTANCE - 0.1 inches
     float targetPosition = (POSITION_TRAVEL_DISTANCE - 0.1) * POSITION_MOTOR_STEPS_PER_INCH;
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(targetPosition);
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(targetPosition);
     Serial.print("YESWOOD: Position motor moving to advance position: ");
     Serial.println(targetPosition);
 }
@@ -68,21 +58,15 @@ void swapClampPositionsForYeswood() {
 }
 
 void returnPositionMotorToHomeForYeswood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_RETURN_SPEED);
-    positionMotor->moveTo(0);
+    positionMotor.setSpeed(POSITION_MOTOR_RETURN_SPEED);
+    positionMotor.moveTo(0);
     Serial.println("YESWOOD: Position motor returning to home position");
 }
 
 void extendPositionClampWhenHomeForYeswood() {
-    if (positionMotor && !positionMotor->isRunning() && positionMotor->getCurrentPosition() == 0) {
+    if (positionMotor.distanceToGo() == 0 && positionMotor.currentPosition() == 0) {
         digitalWrite(POSITION_CLAMP, LOW);
         Serial.println("YESWOOD: Position clamp extended - position motor at home");
-        return;
     }
 }
 
@@ -90,35 +74,26 @@ void extendPositionClampWhenHomeForYeswood() {
 //* ************************ CUT MOTOR HOME VERIFICATION FOR YESWOOD *****
 //* ************************************************************************
 
-bool verifyCutMotorHomeForYeswood() {
-    if (!cutMotor) return false;
-    
+bool checkCutMotorHomeAndSensorForYeswood() {
     // Check if cut motor is at home position
-    if (!cutMotor->isRunning() && cutMotor->getCurrentPosition() == 0) {
+    if (cutMotor.distanceToGo() == 0 && cutMotor.currentPosition() == 0) {
         // Wait 10ms then check homing sensor
         delay(10);
         cutHomingSwitch.update();
-        
-        if (cutHomingSwitch.read() == LOW) {
-            Serial.println("YESWOOD: ERROR - Cut motor failed to home properly (sensor LOW)");
-            // TODO: Enter cutmotorfailedtohome error state
-            return false;
-        } else {
-            Serial.println("YESWOOD: Cut motor home verification successful");
+        if (cutHomingSwitch.read() == HIGH) {
+            Serial.println("YESWOOD: Cut motor confirmed at home position");
             return true;
+        } else {
+            Serial.println("YESWOOD: WARNING - Cut motor reports home but sensor disagrees");
+            return false;
         }
     }
-    return false; // Motor still moving or not at home
+    return false;
 }
 
 void advancePositionMotorToTravelForYeswood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(POSITION_MOTOR_TRAVEL_POSITION);
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(POSITION_MOTOR_TRAVEL_POSITION);
     Serial.println("YESWOOD: Position motor advancing to travel position for next cycle");
 }
 
@@ -127,8 +102,8 @@ void advancePositionMotorToTravelForYeswood() {
 //* ************************************************************************
 
 bool checkRunCycleSwitchForYeswood() {
-    runCycleSwitch.update();
-    if (runCycleSwitch.read() == HIGH) {
+    startCycleSwitch.update();
+    if (startCycleSwitch.read() == HIGH) {
         Serial.println("YESWOOD: Run cycle switch HIGH - continuing to CUTTING");
         currentState = CUTTING;
         return true;
@@ -157,7 +132,7 @@ void executeYeswoodSequence() {
     //! STEP 1: START CUT MOTOR RETURN (ONE TIME)
     //! ************************************************************************
     if (!cutMotorReturnStarted) {
-        startCutMotorReturnForYeswood();
+        returnCutMotorToHomeForYeswood();
         cutMotorReturnStarted = true;
     }
     
@@ -173,22 +148,22 @@ void executeYeswoodSequence() {
     //! STEP 3: ADVANCE POSITION MOTOR (ONE TIME)
     //! ************************************************************************
     if (!positionMotorAdvanced) {
-        movePositionMotorToAdvancePositionForYeswood();
+        advancePositionMotorForYeswood();
         positionMotorAdvanced = true;
     }
     
     //! ************************************************************************
-    //! STEP 4: WAIT FOR POSITION ADVANCE TO COMPLETE, THEN SWAP CLAMPS
+    //! STEP 4: SWAP CLAMP POSITIONS WHEN POSITION MOTOR ADVANCE COMPLETE
     //! ************************************************************************
     if (positionMotorAdvanced && !clampsSwapped) {
-        if (positionMotor && !positionMotor->isRunning()) {
+        if (positionMotor.distanceToGo() == 0) {
             swapClampPositionsForYeswood();
             clampsSwapped = true;
         }
     }
     
     //! ************************************************************************
-    //! STEP 5: RETURN POSITION MOTOR TO HOME (ONE TIME)
+    //! STEP 5: START POSITION MOTOR RETURN WHEN CLAMPS SWAPPED
     //! ************************************************************************
     if (clampsSwapped && !positionMotorHomeStarted) {
         returnPositionMotorToHomeForYeswood();
@@ -196,44 +171,49 @@ void executeYeswoodSequence() {
     }
     
     //! ************************************************************************
-    //! STEP 6: EXTEND POSITION CLAMP WHEN HOME (CONTINUOUS CHECK)
+    //! STEP 6: EXTEND POSITION CLAMP WHEN POSITION MOTOR AT HOME
     //! ************************************************************************
     if (positionMotorHomeStarted && !positionClampExtended) {
         extendPositionClampWhenHomeForYeswood();
-        if (positionMotor && !positionMotor->isRunning() && positionMotor->getCurrentPosition() == 0) {
+        if (positionMotor.distanceToGo() == 0 && positionMotor.currentPosition() == 0) {
             positionClampExtended = true;
         }
     }
     
     //! ************************************************************************
-    //! STEP 7: VERIFY CUT MOTOR HOME (CONTINUOUS CHECK)
+    //! STEP 6.5: VERIFY CUT MOTOR HOME (CONTINUOUS CHECK)
     //! ************************************************************************
     if (cutMotorReturnStarted && !cutMotorHomeVerified) {
-        cutMotorHomeVerified = verifyCutMotorHomeForYeswood();
+        cutMotorHomeVerified = checkCutMotorHomeAndSensorForYeswood();
     }
     
     //! ************************************************************************
-    //! STEP 8: FINAL ADVANCE AND STATE TRANSITION
+    //! STEP 7: START FINAL ADVANCE WHEN POSITION CLAMP EXTENDED AND CUT MOTOR HOME VERIFIED
     //! ************************************************************************
-    if (cutMotorHomeVerified && positionClampExtended && !finalAdvanceStarted) {
+    if (positionClampExtended && cutMotorHomeVerified && !finalAdvanceStarted) {
         advancePositionMotorToTravelForYeswood();
         finalAdvanceStarted = true;
     }
     
     //! ************************************************************************
+    //! STEP 8: RUN MOTORS TO ENSURE THEY MOVE
+    //! ************************************************************************
+    cutMotor.run();
+    positionMotor.run();
+    
+    //! ************************************************************************
     //! STEP 9: CHECK FOR CYCLE CONTINUATION
     //! ************************************************************************
-    if (finalAdvanceStarted && positionMotor && !positionMotor->isRunning()) {
+    if (finalAdvanceStarted && positionMotor.distanceToGo() == 0) {
         checkRunCycleSwitchForYeswood();
         
         // Reset state variables for next cycle
         cutMotorReturnStarted = false;
-        secureClampRetracted = false;
         positionMotorAdvanced = false;
         clampsSwapped = false;
+        cutMotorHomeVerified = false;
         positionMotorHomeStarted = false;
         positionClampExtended = false;
-        cutMotorHomeVerified = false;
         finalAdvanceStarted = false;
     }
 } 

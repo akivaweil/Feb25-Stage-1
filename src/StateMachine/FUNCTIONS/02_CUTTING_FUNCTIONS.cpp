@@ -1,14 +1,14 @@
-#include "../../../include/StateMachine/StateMachine.h"
+#include "StateMachine/StateMachine.h"
 #include "Config/Config.h"
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 #include <Bounce2.h>
 
 // External variable declarations
-extern FastAccelStepper *cutMotor;
-extern FastAccelStepper *positionMotor;
+extern AccelStepper cutMotor;
+extern AccelStepper positionMotor;
 extern Bounce woodSensor;
-extern Bounce waswoodsuctionedSensor;
-extern StateType currentState;
+extern Bounce wasWoodSuctionedSensor;
+extern SystemState currentState;
 
 //* ************************************************************************
 //* ************************ CUTTING FUNCTIONS ***************************
@@ -38,29 +38,22 @@ void extendBothClampsForCutting() {
 //* ************************************************************************
 
 void startCutMotorMovementForCutting() {
-    if (!cutMotor) {
-        Serial.println("ERROR: Cut motor not initialized");
-        return;
-    }
-    
-    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_NORMAL_SPEED);
-    cutMotor->moveTo(CUT_MOTOR_CUT_POSITION);
+    cutMotor.setSpeed(CUT_MOTOR_NORMAL_SPEED);
+    cutMotor.moveTo(CUT_MOTOR_CUT_POSITION);
     Serial.print("CUTTING: Cut motor started - moving to position ");
     Serial.println(CUT_MOTOR_CUT_POSITION);
 }
 
 bool checkCutMotorSafetyAt03Inches() {
-    if (!cutMotor) return false;
-    
     // Calculate 0.3 inch position
     float safetyCheckPosition = 0.3 * CUT_MOTOR_STEPS_PER_INCH;
     
     // Check if motor has reached 0.3 inches
-    if (cutMotor->getCurrentPosition() >= safetyCheckPosition) {
-        waswoodsuctionedSensor.update();
-        if (waswoodsuctionedSensor.read() == LOW) {
+    if (cutMotor.currentPosition() >= safetyCheckPosition) {
+        wasWoodSuctionedSensor.update();
+        if (wasWoodSuctionedSensor.read() == LOW) {
             Serial.println("CUTTING: SAFETY VIOLATION - Wood suctioned sensor activated at 0.3 inches");
-            cutMotor->stopMove();
+            cutMotor.stop();
             // TODO: Enter waswoodsuctioned error state
             return false;
         }
@@ -70,12 +63,10 @@ bool checkCutMotorSafetyAt03Inches() {
 }
 
 bool checkCatcherClampActivationPoint() {
-    if (!cutMotor) return false;
-    
     // Calculate activation point
     float activationPosition = CUT_MOTOR_CUT_POSITION - (CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES * CUT_MOTOR_STEPS_PER_INCH);
     
-    if (cutMotor->getCurrentPosition() >= activationPosition) {
+    if (cutMotor.currentPosition() >= activationPosition) {
         // Activate catcher clamp
         digitalWrite(CATCHER_CLAMP_PIN, LOW);
         Serial.println("CUTTING: Catcher clamp activated at early activation offset");
@@ -85,12 +76,10 @@ bool checkCatcherClampActivationPoint() {
 }
 
 bool checkCatcherServoActivationPoint() {
-    if (!cutMotor) return false;
-    
     // Calculate activation point
     float activationPosition = CUT_MOTOR_CUT_POSITION - (CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES * CUT_MOTOR_STEPS_PER_INCH);
     
-    if (cutMotor->getCurrentPosition() >= activationPosition) {
+    if (cutMotor.currentPosition() >= activationPosition) {
         // Activate catcher servo
         // TODO: Add servo activation code
         Serial.println("CUTTING: Catcher servo activated at early activation offset");
@@ -146,7 +135,9 @@ void executeCuttingSequence() {
     //! ************************************************************************
     //! STEP 3: CONTINUOUS SAFETY AND ACTIVATION CHECKS
     //! ************************************************************************
-    if (cutMotor && cutMotor->isRunning()) {
+    if (cutMotor.distanceToGo() != 0) {
+        cutMotor.run(); // Make the motor move
+        
         // Safety check at 0.3 inches
         if (!safetyChecked) {
             if (!checkCutMotorSafetyAt03Inches()) {
@@ -173,7 +164,7 @@ void executeCuttingSequence() {
     //! ************************************************************************
     //! STEP 4: CHECK IF CUT IS COMPLETE AND ROUTE TO NEXT STATE
     //! ************************************************************************
-    if (cutMotor && !cutMotor->isRunning()) {
+    if (cutMotor.distanceToGo() == 0) {
         Serial.println("CUTTING: Cut motor movement complete - checking wood sensor");
         checkWoodSensorForStateTransition();
         

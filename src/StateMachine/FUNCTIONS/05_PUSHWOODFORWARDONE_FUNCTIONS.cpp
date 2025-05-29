@@ -1,10 +1,10 @@
-#include "../../../include/StateMachine/StateMachine.h"
+#include "StateMachine/StateMachine.h"
 #include "Config/Config.h"
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 
 // External variable declarations
-extern FastAccelStepper *positionMotor;
-extern StateType currentState;
+extern AccelStepper positionMotor;
+extern SystemState currentState;
 
 //* ************************************************************************
 //* ************************ PUSHWOODFORWARDONE FUNCTIONS ****************
@@ -46,38 +46,23 @@ void swapToPositionControlForPushWood() {
 //* ************************************************************************
 
 void movePositionMotorToHomeForPushWood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(0);
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(0);
     Serial.println("PUSHWOOD: Position motor moving to home position (0)");
 }
 
-void movePositionMotorToAdvanceForPushWood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
+void advancePositionMotorForPushWood() {
     // Move to POSITION_TRAVEL_DISTANCE - 0.1 inches
     float targetPosition = (POSITION_TRAVEL_DISTANCE - 0.1) * POSITION_MOTOR_STEPS_PER_INCH;
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(targetPosition);
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(targetPosition);
     Serial.print("PUSHWOOD: Position motor moving to advance position: ");
     Serial.println(targetPosition);
 }
 
-void movePositionMotorToFinalTravelForPushWood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(POSITION_MOTOR_TRAVEL_POSITION);
+void movePositionMotorToFinalForPushWood() {
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(POSITION_MOTOR_TRAVEL_POSITION);
     Serial.println("PUSHWOOD: Position motor moving to final travel position");
 }
 
@@ -138,7 +123,7 @@ void executePushWoodForwardSequence() {
     //! STEP 3: WAIT FOR HOME, THEN SWAP TO SECURE CONTROL (ONE TIME)
     //! ************************************************************************
     if (positionMotorToHome && !clampsSwappedToSecure) {
-        if (positionMotor && !positionMotor->isRunning()) {
+        if (positionMotor.distanceToGo() == 0) {
             swapToSecureControlForPushWood();
             clampsSwappedToSecure = true;
         }
@@ -156,7 +141,7 @@ void executePushWoodForwardSequence() {
     //! STEP 5: MOVE POSITION MOTOR TO ADVANCE POSITION (ONE TIME)
     //! ************************************************************************
     if (swapDelayCompleted && !positionMotorAdvanced) {
-        movePositionMotorToAdvanceForPushWood();
+        advancePositionMotorForPushWood();
         positionMotorAdvanced = true;
     }
     
@@ -164,7 +149,7 @@ void executePushWoodForwardSequence() {
     //! STEP 6: WAIT FOR ADVANCE, THEN SWAP TO POSITION CONTROL (ONE TIME)
     //! ************************************************************************
     if (positionMotorAdvanced && !clampsSwappedToPosition) {
-        if (positionMotor && !positionMotor->isRunning()) {
+        if (positionMotor.distanceToGo() == 0) {
             swapToPositionControlForPushWood();
             clampsSwappedToPosition = true;
         }
@@ -182,16 +167,22 @@ void executePushWoodForwardSequence() {
     //! STEP 8: MOVE TO FINAL TRAVEL POSITION (ONE TIME)
     //! ************************************************************************
     if (finalDelayCompleted && !positionMotorToFinal) {
-        movePositionMotorToFinalTravelForPushWood();
+        movePositionMotorToFinalForPushWood();
         positionMotorToFinal = true;
     }
+    
+    //! ************************************************************************
+    //! STEP 8.5: RUN MOTOR TO ENSURE IT MOVES
+    //! ************************************************************************
+    positionMotor.run();
     
     //! ************************************************************************
     //! STEP 9: WAIT FOR COMPLETION AND TRANSITION TO IDLE
     //! ************************************************************************
     if (positionMotorToFinal) {
-        if (positionMotor && !positionMotor->isRunning()) {
-            transitionFromPushWoodToIdle();
+        if (positionMotor.distanceToGo() == 0) {
+            Serial.println("PUSHWOOD: Position motor at final position - transitioning to IDLE");
+            currentState = IDLE;
             
             // Reset state variables for next cycle
             positionClampRetracted = false;

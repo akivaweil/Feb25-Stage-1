@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Bounce2.h>
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 #include <esp_system.h>
 #include <ESP32Servo.h>
 #include "Config/Config.h"
@@ -27,10 +27,9 @@ bool catcherClampIsEngaged = false;
 extern SystemState currentState;
 extern SystemState previousState;
 
-// Create motor objects
-FastAccelStepperEngine engine = FastAccelStepperEngine();
-FastAccelStepper *cutMotor = NULL;
-FastAccelStepper *positionMotor = NULL;
+// Create motor objects using AccelStepper
+AccelStepper cutMotor(AccelStepper::DRIVER, CUT_MOTOR_PULSE_PIN, CUT_MOTOR_DIR_PIN);
+AccelStepper positionMotor(AccelStepper::DRIVER, POSITION_MOTOR_PULSE_PIN, POSITION_MOTOR_DIR_PIN);
 
 // Servo object
 Servo catcherServo;
@@ -121,30 +120,17 @@ void setup() {
   Serial.println("Pin configs complete, initializing motors...");
   
   //! Initialize motors
-  engine.init();
   Serial.println("Engine initialized");
 
-  cutMotor = engine.stepperConnectToPin(CUT_MOTOR_PULSE_PIN);
-  if (cutMotor) {
-    cutMotor->setDirectionPin(CUT_MOTOR_DIR_PIN);
-    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_NORMAL_SPEED);
-    cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION);
-    cutMotor->setCurrentPosition(0);
-    Serial.println("Cut motor initialized successfully");
-  } else {
-    Serial.println("Failed to init cutMotor");
-  }
+  cutMotor.setSpeed(CUT_MOTOR_NORMAL_SPEED);
+  cutMotor.setAcceleration(CUT_MOTOR_NORMAL_ACCELERATION);
+  cutMotor.setCurrentPosition(0);
+  Serial.println("Cut motor initialized successfully");
 
-  positionMotor = engine.stepperConnectToPin(POSITION_MOTOR_PULSE_PIN);
-  if (positionMotor) {
-    positionMotor->setDirectionPin(POSITION_MOTOR_DIR_PIN);
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->setAcceleration((uint32_t)POSITION_MOTOR_NORMAL_ACCELERATION);
-    positionMotor->setCurrentPosition(0);
-    Serial.println("Position motor initialized successfully");
-  } else {
-    Serial.println("Failed to init positionMotor");
-  }
+  positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+  positionMotor.setAcceleration(POSITION_MOTOR_NORMAL_ACCELERATION);
+  positionMotor.setCurrentPosition(0);
+  Serial.println("Position motor initialized successfully");
   
   Serial.println("Motor setup complete - OTA + Motors working");
   

@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "Config/Config.h"
 #include "Config/Pins_Definitions.h"
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 #include <Bounce2.h>
 
 //* ************************************************************************
@@ -14,8 +14,8 @@
 //! Defines all states and function prototypes for the system
 
 // Motor object declarations
-extern FastAccelStepper *cutMotor;
-extern FastAccelStepper *positionMotor;
+extern AccelStepper cutMotor;
+extern AccelStepper positionMotor;
 
 // Clamp Types Enum (using _TYPE suffix)
 enum ClampType {
@@ -75,6 +75,14 @@ void executeYESWOOD();
 void executeNOWOOD();
 void executePUSHWOODFORWARDONE();
 void executeRELOAD();
+
+// State Execution Functions (from FUNCTIONS files)
+void executeIdleMonitoring();
+void executeCuttingSequence();
+void executeYeswoodSequence();
+void executeNowoodSequence();
+void executePushWoodForwardSequence();
+void executeReloadSequence();
 
 // Transition Functions
 bool checkTransitionConditions();

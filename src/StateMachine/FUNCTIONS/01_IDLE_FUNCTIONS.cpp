@@ -1,4 +1,4 @@
-#include "../../../include/StateMachine/StateMachine.h"
+#include "StateMachine/StateMachine.h"
 #include "Config/Config.h"
 #include "OTA_Manager.h"
 #include <Bounce2.h>
@@ -6,7 +6,7 @@
 // External variable declarations
 extern Bounce startCycleSwitch;
 extern Bounce reloadSwitch;
-extern StateType currentState;
+extern SystemState currentState;
 
 //* ************************************************************************
 //* ************************ IDLE FUNCTIONS ***************************

@@ -1,18 +1,18 @@
-#include "../../../include/StateMachine/StateMachine.h"
+#include "StateMachine/StateMachine.h"
 #include "Config/Config.h"
-#include <FastAccelStepper.h>
+#include <AccelStepper.h>
 #include <Bounce2.h>
 
 // External variable declarations
-extern FastAccelStepper *cutMotor;
-extern FastAccelStepper *positionMotor;
-extern StateType currentState;
+extern AccelStepper cutMotor;
+extern AccelStepper positionMotor;
+extern SystemState currentState;
 
 //* ************************************************************************
-//* ************************ NOWOOD FUNCTIONS ***************************
+//* ************************ NOWOOD FUNCTIONS ****************************
 //* ************************************************************************
 //! NOWOOD-specific functions for handling when no wood is detected
-//! These functions reset the machine state and prepare for the next cycle
+//! These functions handle the sequence when wood is not caught by the catcher
 
 //* ************************************************************************
 //* ************************ CLAMP OPERATIONS FOR NOWOOD *****************
@@ -37,37 +37,22 @@ void resetClampPositionsForNowood() {
 //* ************************ MOTOR OPERATIONS FOR NOWOOD *****************
 //* ************************************************************************
 
-void movePositionMotorToNegativeOneForNowood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
+void movePositionMotorToNegOneForNowood() {
     // Move to -1 position (negative 1 step)
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(-1);
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(-1);
     Serial.println("NOWOOD: Position motor moving to -1 position");
 }
 
-void startCutMotorReturnForNowood() {
-    if (!cutMotor) {
-        Serial.println("ERROR: Cut motor not initialized");
-        return;
-    }
-    
-    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_RETURN_SPEED);
-    cutMotor->moveTo(0);
+void returnCutMotorToHomeForNowood() {
+    cutMotor.setSpeed(CUT_MOTOR_RETURN_SPEED);
+    cutMotor.moveTo(0);
     Serial.println("NOWOOD: Cut motor returning to home position");
 }
 
-void movePositionMotorToTravelForNowood() {
-    if (!positionMotor) {
-        Serial.println("ERROR: Position motor not initialized");
-        return;
-    }
-    
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->moveTo(POSITION_MOTOR_TRAVEL_POSITION);
+void advancePositionMotorToTravelForNowood() {
+    positionMotor.setSpeed(POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor.moveTo(POSITION_MOTOR_TRAVEL_POSITION);
     Serial.println("NOWOOD: Position motor moving to travel position");
 }
 
@@ -103,7 +88,7 @@ void executeNowoodSequence() {
     //! STEP 2: MOVE POSITION MOTOR TO -1 (ONE TIME)
     //! ************************************************************************
     if (!positionMotorToNegOne) {
-        movePositionMotorToNegativeOneForNowood();
+        movePositionMotorToNegOneForNowood();
         positionMotorToNegOne = true;
     }
     
@@ -111,15 +96,15 @@ void executeNowoodSequence() {
     //! STEP 3: START CUT MOTOR RETURN (ONE TIME)
     //! ************************************************************************
     if (!cutMotorReturnStarted) {
-        startCutMotorReturnForNowood();
+        returnCutMotorToHomeForNowood();
         cutMotorReturnStarted = true;
     }
     
     //! ************************************************************************
-    //! STEP 4: WAIT FOR POSITION MOTOR TO REACH -1, THEN RESET CLAMPS
+    //! STEP 4: RESET CLAMPS WHEN POSITION MOTOR AT -1
     //! ************************************************************************
     if (positionMotorToNegOne && !clampsReset) {
-        if (positionMotor && !positionMotor->isRunning()) {
+        if (positionMotor.distanceToGo() == 0) {
             resetClampPositionsForNowood();
             clampsReset = true;
         }
@@ -129,25 +114,31 @@ void executeNowoodSequence() {
     //! STEP 5: MOVE POSITION MOTOR TO TRAVEL POSITION (ONE TIME)
     //! ************************************************************************
     if (clampsReset && !positionMotorToTravel) {
-        movePositionMotorToTravelForNowood();
+        advancePositionMotorToTravelForNowood();
         positionMotorToTravel = true;
     }
     
     //! ************************************************************************
-    //! STEP 6: WAIT FOR ALL MOVEMENTS TO COMPLETE, THEN TRANSITION TO IDLE
+    //! STEP 6: RUN MOTORS TO ENSURE THEY MOVE
+    //! ************************************************************************
+    cutMotor.run();
+    positionMotor.run();
+    
+    //! ************************************************************************
+    //! STEP 7: CHECK FOR COMPLETION AND TRANSITION TO IDLE
     //! ************************************************************************
     if (positionMotorToTravel && cutMotorReturnStarted) {
-        bool cutMotorDone = (cutMotor && !cutMotor->isRunning());
-        bool positionMotorDone = (positionMotor && !positionMotor->isRunning());
+        bool cutMotorDone = (cutMotor.distanceToGo() == 0);
+        bool positionMotorDone = (positionMotor.distanceToGo() == 0);
         
         if (cutMotorDone && positionMotorDone) {
-            transitionFromNowoodToIdle();
+            Serial.println("NOWOOD: Both motors complete - transitioning to IDLE");
+            currentState = IDLE;
             
             // Reset state variables for next cycle
-            secureClampRetracted = false;
             positionMotorToNegOne = false;
-            cutMotorReturnStarted = false;
             clampsReset = false;
+            cutMotorReturnStarted = false;
             positionMotorToTravel = false;
         }
     }

@@ -46,25 +46,25 @@ void updateStateMachine() {
             changeState(HOMING);
             break;
         case IDLE:
-            executeIDLE();
+            executeIdleMonitoring();
             break;
         case HOMING:
-            executeHOMING();
+            executeCompleteHomingSequence();
             break;
         case CUTTING:
-            executeCUTTING();
+            executeCuttingSequence();
             break;
         case YESWOOD:
-            executeYESWOOD();
+            executeYeswoodSequence();
             break;
         case NOWOOD:
-            executeNOWOOD();
+            executeNowoodSequence();
             break;
         case pushWoodForwardOne:
-            executePUSHWOODFORWARDONE();
+            executePushWoodForwardSequence();
             break;
         case RELOAD:
-            executeRELOAD();
+            executeReloadSequence();
             break;
         case ERROR:
             // Handle error state - blink red LED and monitor for recovery

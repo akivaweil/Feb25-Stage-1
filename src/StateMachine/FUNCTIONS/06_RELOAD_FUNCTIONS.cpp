@@ -1,11 +1,11 @@
-#include "../../../include/StateMachine/StateMachine.h"
+#include "StateMachine/StateMachine.h"
 #include "Config/Config.h"
 #include <Bounce2.h>
 
 // External variable declarations
 extern Bounce reloadSwitch;
-extern StateType currentState;
-extern bool reloadModeActive;
+extern SystemState currentState;
+extern bool isReloadMode;
 
 //* ************************************************************************
 //* ************************ RELOAD FUNCTIONS ***************************
@@ -50,12 +50,12 @@ void reengageOperationalClampsForReload() {
 //* ************************************************************************
 
 void enterReloadMode() {
-    reloadModeActive = true;
+    isReloadMode = true;
     Serial.println("RELOAD: Entering reload mode - safe for manual wood handling");
 }
 
 void exitReloadMode() {
-    reloadModeActive = false;
+    isReloadMode = false;
     Serial.println("RELOAD: Exiting reload mode - returning to operational state");
 }
 
