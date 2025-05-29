@@ -161,7 +161,7 @@ void attemptCutMotorHomeRecovery() {
             
             // Start new homing attempt
             startCutMotorHomingWithErrorDetection();
-            homeCutMotor();
+            homeCutMotorBlocking(cutHomingSwitch, 30000); // Use new blocking homing function
         }
     } else if (cutMotorHomingAttempts >= MAX_HOMING_ATTEMPTS) {
         Serial.println("Cut motor homing recovery failed - maximum attempts exceeded");

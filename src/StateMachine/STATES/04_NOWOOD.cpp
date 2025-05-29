@@ -1,149 +1,108 @@
 #include "StateMachine/StateMachine.h"
+#include <FastAccelStepper.h>
+#include <Bounce2.h>
 
 //* ************************************************************************
-//* ************************ NOWOOD STATE ***************************
+//* ************************ NOWOOD STATE *********************************
 //* ************************************************************************
-//! NOWOOD state implementation
-//! Handles the sequence when no wood is detected
-//! Steps: 1) Retract secure wood clamp, 2) Move position motor to -1, 
-//! 3) Return cut motor to position 0 (simultaneous), 4) Retract then extend position clamp,
-//! 5) Move position motor to POSITION_TRAVEL_DISTANCE, 6) Return to IDLE state
+//! NOWOOD state implementation - Processing when no wood is detected
+//! 
+//! Step-by-step sequence:
+//! 1. Retract the secure wood clamp
+//! 2. Move the position motor to -1
+//! 3. Return the cut motor to position 0 (this should occur simultaneously with everything else)
+//! 4. Retract the position clamp and extend the position clamp
+//! 5. Move the position motor to POSITION_TRAVEL_DISTANCE
+//! 6. Return to idle state
+
+// External variable declarations
+extern FastAccelStepper *cutMotor;
+extern FastAccelStepper *positionMotor;
+
+// State variables
+static bool nowoodStateEntered = false;
+static bool secureClampRetracted = false;
+static bool positionMotorToMinusOne = false;
+static bool cutMotorReturnStarted = false;
+static bool clampOperationsComplete = false;
+static bool finalPositionMove = false;
 
 void executeNOWOOD() {
-    static int nowoodStep = 1;
-    static bool stepInitiated = false;
-    static unsigned long stepStartTime = 0;
+    //! ************************************************************************
+    //! STEP 1: RETRACT THE SECURE WOOD CLAMP
+    //! ************************************************************************
+    if (!nowoodStateEntered) {
+        Serial.println("=== NOWOOD STATE ENTERED ===");
+        nowoodStateEntered = true;
+        
+        // Reset all state variables
+        secureClampRetracted = false;
+        positionMotorToMinusOne = false;
+        cutMotorReturnStarted = false;
+        clampOperationsComplete = false;
+        finalPositionMove = false;
+        
+        Serial.println("!1. Retracting the secure wood clamp");
+        retractClamp(WOOD_SECURE_CLAMP_TYPE);
+        secureClampRetracted = true;
+    }
     
-    switch(nowoodStep) {
-        case 1:
-            //! Step 1: Retract the secure wood clamp
-            if (!stepInitiated) {
-                Serial.println("NOWOOD: Step 1 - Retract secure wood clamp");
-                retractClamp(WOOD_SECURE_CLAMP_TYPE);
-                stepInitiated = true;
-                stepStartTime = millis();
-            }
-            
-            // Wait for clamp operation to complete
-            if (millis() - stepStartTime >= 500) {  // 500ms delay for clamp operation
-                stepInitiated = false;
-                nowoodStep = 2;
-            }
-            break;
-            
-        case 2:
-            //! Step 2: Move position motor to -1 and simultaneously return cut motor to position 0
-            if (!stepInitiated) {
-                Serial.println("NOWOOD: Step 2 - Move position motor to -1 and cut motor to 0 (simultaneous)");
-                
-                // Move position motor to -1 step
-                if (positionMotor) {
-                    positionMotor->moveTo(-1);
-                }
-                
-                // Simultaneously return cut motor to position 0
-                if (cutMotor) {
-                    cutMotor->moveTo(0);
-                }
-                
-                stepInitiated = true;
-                stepStartTime = millis();
-            }
-            
-            // Wait for both motors to complete their moves
-            bool positionMotorDone = !positionMotor || !positionMotor->isRunning();
-            bool cutMotorDone = !cutMotor || !cutMotor->isRunning();
-            
-            if (positionMotorDone && cutMotorDone) {
-                Serial.println("NOWOOD: Both motors completed movement");
-                stepInitiated = false;
-                nowoodStep = 3;
-            }
-            
-            // Timeout safety
-            if (millis() - stepStartTime >= 10000) {  // 10 second timeout
-                Serial.println("NOWOOD: Motor movement timeout");
-                stepInitiated = false;
-                nowoodStep = 3;
-            }
-            break;
-            
-        case 3:
-            //! Step 3: Retract position clamp
-            if (!stepInitiated) {
-                Serial.println("NOWOOD: Step 3 - Retract position clamp");
-                retractClamp(POSITION_CLAMP_TYPE);
-                stepInitiated = true;
-                stepStartTime = millis();
-            }
-            
-            // Wait for clamp operation to complete
-            if (millis() - stepStartTime >= 500) {  // 500ms delay for clamp operation
-                stepInitiated = false;
-                nowoodStep = 4;
-            }
-            break;
-            
-        case 4:
-            //! Step 4: Extend position clamp
-            if (!stepInitiated) {
-                Serial.println("NOWOOD: Step 4 - Extend position clamp");
-                extendClamp(POSITION_CLAMP_TYPE);
-                stepInitiated = true;
-                stepStartTime = millis();
-            }
-            
-            // Wait for clamp operation to complete
-            if (millis() - stepStartTime >= 500) {  // 500ms delay for clamp operation
-                stepInitiated = false;
-                nowoodStep = 5;
-            }
-            break;
-            
-        case 5:
-            //! Step 5: Move position motor to POSITION_TRAVEL_DISTANCE
-            if (!stepInitiated) {
-                Serial.println("NOWOOD: Step 5 - Move position motor to POSITION_TRAVEL_DISTANCE");
-                
-                if (positionMotor) {
-                    long travelSteps = (long)(POSITION_TRAVEL_DISTANCE * POSITION_MOTOR_STEPS_PER_INCH);
-                    positionMotor->moveTo(travelSteps);
-                    Serial.print("Moving to position: ");
-                    Serial.print(POSITION_TRAVEL_DISTANCE);
-                    Serial.print(" inches (");
-                    Serial.print(travelSteps);
-                    Serial.println(" steps)");
-                }
-                
-                stepInitiated = true;
-                stepStartTime = millis();
-            }
-            
-            // Wait for motor to complete movement
-            if (!positionMotor || !positionMotor->isRunning()) {
-                Serial.println("NOWOOD: Position motor reached POSITION_TRAVEL_DISTANCE");
-                stepInitiated = false;
-                nowoodStep = 6;
-            }
-            
-            // Timeout safety
-            if (millis() - stepStartTime >= 10000) {  // 10 second timeout
-                Serial.println("NOWOOD: Position motor movement timeout");
-                stepInitiated = false;
-                nowoodStep = 6;
-            }
-            break;
-            
-        case 6:
-            //! Step 6: Return to IDLE state
-            Serial.println("NOWOOD: Step 6 - Returning to IDLE state");
-            
-            // Reset step counter for next execution
-            nowoodStep = 1;
-            stepInitiated = false;
-            
-            // Transition to IDLE state
+    //! ************************************************************************
+    //! STEP 2: MOVE THE POSITION MOTOR TO -1
+    //! ************************************************************************
+    if (secureClampRetracted && !positionMotorToMinusOne) {
+        Serial.println("!2. Moving position motor to -1");
+        if (positionMotor) {
+            long targetSteps = (long)(-1.0f * STEPS_PER_INCH_POSITION);
+            moveMotorTo(POSITION_MOTOR, targetSteps, POSITION_MOTOR_NORMAL_SPEED);
+        }
+        positionMotorToMinusOne = true;
+    }
+    
+    //! ************************************************************************
+    //! STEP 3: RETURN THE CUT MOTOR TO POSITION 0 (SIMULTANEOUS)
+    //! ************************************************************************
+    if (positionMotorToMinusOne && !cutMotorReturnStarted) {
+        Serial.println("!3. Returning cut motor to position 0");
+        if (cutMotor) {
+            moveMotorTo(CUT_MOTOR, 0, CUT_MOTOR_RETURN_SPEED);
+            cutMotorReturnStarted = true;
+        }
+    }
+    
+    //! ************************************************************************
+    //! STEP 4: RETRACT POSITION CLAMP AND EXTEND POSITION CLAMP
+    //! ************************************************************************
+    if (positionMotorToMinusOne && !clampOperationsComplete) {
+        if (positionMotor && !positionMotor->isRunning()) {
+            Serial.println("!4. Retracting position clamp and extending position clamp");
+            retractClamp(POSITION_CLAMP_TYPE);
+            extendClamp(POSITION_CLAMP_TYPE);
+            clampOperationsComplete = true;
+        }
+    }
+    
+    //! ************************************************************************
+    //! STEP 5: MOVE THE POSITION MOTOR TO POSITION_TRAVEL_DISTANCE
+    //! ************************************************************************
+    if (clampOperationsComplete && !finalPositionMove) {
+        Serial.println("!5. Moving position motor to POSITION_TRAVEL_DISTANCE");
+        if (positionMotor) {
+            moveMotorTo(POSITION_MOTOR, POSITION_MOTOR_TRAVEL_POSITION, POSITION_MOTOR_NORMAL_SPEED);
+            finalPositionMove = true;
+        }
+    }
+    
+    //! ************************************************************************
+    //! STEP 6: RETURN TO IDLE STATE
+    //! ************************************************************************
+    if (finalPositionMove) {
+        if (positionMotor && !positionMotor->isRunning()) {
+            Serial.println("!6. Position motor movement complete - returning to IDLE state");
             changeState(IDLE);
-            break;
+            
+            // Reset state variables for next entry
+            nowoodStateEntered = false;
+        }
     }
 } 

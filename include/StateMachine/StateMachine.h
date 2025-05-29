@@ -5,6 +5,7 @@
 #include "Config/Config.h"
 #include "Config/Pins_Definitions.h"
 #include <FastAccelStepper.h>
+#include <Bounce2.h>
 
 //* ************************************************************************
 //* ************************ STATE MACHINE ***************************
@@ -16,11 +17,29 @@
 extern FastAccelStepper *cutMotor;
 extern FastAccelStepper *positionMotor;
 
-// Clamp Types Enum
+// Clamp Types Enum (using _TYPE suffix)
 enum ClampType {
     POSITION_CLAMP_TYPE,
     WOOD_SECURE_CLAMP_TYPE,
     CATCHER_CLAMP_TYPE
+};
+
+// Motor Types Enum
+enum MotorType {
+    CUT_MOTOR,
+    POSITION_MOTOR
+};
+
+// Sensor Types Enum
+enum SensorType {
+    WOOD_SENSOR_TYPE,
+    WOOD_SUCTION_SENSOR_TYPE
+};
+
+// Switch Types Enum
+enum SwitchType {
+    CUT_MOTOR_HOMING_SWITCH_TYPE,
+    POSITION_MOTOR_HOMING_SWITCH_TYPE
 };
 
 // State Definitions
@@ -54,7 +73,7 @@ void executeHOMING();
 void executeCUTTING();
 void executeYESWOOD();
 void executeNOWOOD();
-void executepushWoodForwardOne();
+void executePUSHWOODFORWARDONE();
 void executeRELOAD();
 
 // Transition Functions
@@ -70,38 +89,17 @@ void checkCatcherClampEarlyActivation();
 void movePositionMotorToTravelWithEarlyActivation();
 
 // Homing Functions
-void startHomingSequence();
-void updateHomingSequence();
-bool isHomingSequenceComplete();
-void homeCutMotor();
-bool isCutMotorHoming();
-void homePositionMotor();
-bool isPositionMotorHoming();
-void movePositionMotorToTravelAfterHoming();
-bool isPositionMotorMovingToTravel();
-bool isCutMotorHomingComplete();
-bool isPositionMotorHomingComplete();
-bool isPositionMotorAtTravelPosition();
-void resetHomingFlags();
+void executeCompleteHomingSequence();
+void homeCutMotorBlocking(Bounce& homingSwitch, unsigned long timeout);
+void homePositionMotorBlocking(Bounce& homingSwitch);
+bool checkAndRecalibrateCutMotorHome(int attempts);
 
 // Motor Control Functions
+void moveMotorTo(MotorType motor, float position, float speed);
 void stopCutMotor();
 void stopPositionMotor();
-void configureCutMotorForCutting();
-void configureCutMotorForReturn();
-void configurePositionMotorForNormalOperation();
-void configurePositionMotorForReturn();
-void moveCutMotorToCut();
-void moveCutMotorToHome();
-void movePositionMotorToTravel();
-void movePositionMotorToHome();
-void movePositionMotorToPosition(float targetPositionInches);
-
-// Stepper Motor Functions
-void stepperStepCutMotor(bool direction);
-void stepperStepPositionMotor(bool direction);
-void moveCutMotorSteps(float steps, bool direction, float delayBetweenSteps);
-void movePositionMotorSteps(float steps, bool direction, float delayBetweenSteps);
+void movePositionMotorToTravelWithEarlyActivation();
+void movePositionMotorToInitialAfterHoming();
 
 // Clamp Control Functions
 void extendClamp(ClampType clamp);
@@ -110,13 +108,13 @@ void retractAllCylinders();
 void extendAllCylinders();
 
 // Sensor Reading Functions
+bool readSensor(SensorType sensor);
+bool readLimitSwitch(SwitchType switchType);
+bool readHomeSwitch(SwitchType switchType);
 bool readWoodSensor();
 bool readWoodSuctionSensor();
-bool readSensor(float sensorNumber);
 bool readCutMotorHomingSwitch();
 bool readPositionMotorHomingSwitch();
-bool readLimitSwitch(float switchNumber);
-bool readHomeSwitch(float switchNumber);
 
 // LED Control Functions
 void turnRedLedOn();
@@ -128,10 +126,30 @@ void turnGreenLedOff();
 void turnBlueLedOn();
 void turnBlueLedOff();
 void allLedsOff();
+void handleHomingLedBlink();
+void handleErrorLedBlink();
 
 // Error Functions
 void forceTriggerWoodSuctionError();
 bool isCutMotorHomeErrorActive();
 void triggerCutMotorHomeError();
+
+// IDLE State Functions
+bool shouldStartCycle();
+void handleReloadMode();
+void handleStartSwitchSafety();
+void handleStartSwitchContinuousMode();
+
+// Signaling Functions
+void sendSignalToTA();
+void handleTASignalTiming();
+void activateCatcherServo();
+void handleCatcherServoReturn();
+
+// Timing Functions
+void handleCatcherClampDisengage();
+
+// Error Functions
+void handleErrorAcknowledgement();
 
 #endif // STATEMACHINE_H 

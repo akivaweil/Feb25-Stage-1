@@ -1,107 +1,86 @@
 #include "StateMachine/StateMachine.h"
 
-// External variable declarations for catcher clamp timing
-extern unsigned long catcherClampEngageTime;
-extern bool catcherClampIsEngaged;
-
 //* ************************************************************************
 //* ************************ MOTOR FUNCTIONS ***************************
 //* ************************************************************************
-//! Motor control functions for steppers and pneumatic cylinders
-//! Basic movement functions that can be shared across states
-//! THIS FILE CONTAINS ONLY MOTOR-RELATED FUNCTIONS
+//! Motor control functions for steppers only
+//! ONLY ABSOLUTELY NECESSARY FUNCTIONS - All redundant wrappers removed
+//! Use moveMotorTo() directly with appropriate parameters
 
-// Individual Motor Step Functions
-void stepperStepCutMotor(bool direction) {
-    digitalWrite((int)CUT_MOTOR_DIR_PIN, direction ? HIGH : LOW);
-    digitalWrite((int)CUT_MOTOR_PULSE_PIN, HIGH);
-    delayMicroseconds(2);  // Correct - stepper drivers need microsecond pulses
-    digitalWrite((int)CUT_MOTOR_PULSE_PIN, LOW);
-    delayMicroseconds(2);  // Correct - stepper drivers need microsecond pulses
-}
+// External variable declarations
+extern FastAccelStepper *cutMotor;
+extern FastAccelStepper *positionMotor;
 
-void stepperStepPositionMotor(bool direction) {
-    digitalWrite((int)POSITION_MOTOR_DIR_PIN, direction ? HIGH : LOW);
-    digitalWrite((int)POSITION_MOTOR_PULSE_PIN, HIGH);
-    delayMicroseconds(2);  // Correct - stepper drivers need microsecond pulses
-    digitalWrite((int)POSITION_MOTOR_PULSE_PIN, LOW);
-    delayMicroseconds(2);  // Correct - stepper drivers need microsecond pulses
-}
+//* ************************************************************************
+//* ************************ CORE MOTOR FUNCTIONS ************************
+//* ************************************************************************
+//! These are the only motor movement functions you should use
 
-// Multi-Step Motor Movement Functions
-void moveCutMotorSteps(float steps, bool direction, float delayBetweenSteps) {
-    for (float i = 0.0; i < steps; i += 1.0) {
-        stepperStepCutMotor(direction);
-        delay((int)delayBetweenSteps);  // Correct - delay between steps in milliseconds
+void moveMotorTo(MotorType motor, float position, float speed) {
+    switch(motor) {
+        case CUT_MOTOR:
+            if (cutMotor) {
+                cutMotor->setSpeedInHz(speed);
+                cutMotor->moveTo(position);
+                Serial.print("Cut motor moving to position: ");
+                Serial.print(position);
+                Serial.print(" at speed: ");
+                Serial.println(speed);
+            }
+            break;
+        case POSITION_MOTOR:
+            if (positionMotor) {
+                positionMotor->setSpeedInHz(speed);
+                positionMotor->moveTo(position);
+                Serial.print("Position motor moving to position: ");
+                Serial.print(position);
+                Serial.print(" at speed: ");
+                Serial.println(speed);
+            }
+            break;
+        default:
+            Serial.println("ERROR: Unknown motor type for moveMotorTo operation");
+            break;
     }
 }
 
-void movePositionMotorSteps(float steps, bool direction, float delayBetweenSteps) {
-    for (float i = 0.0; i < steps; i += 1.0) {
-        stepperStepPositionMotor(direction);
-        delay((int)delayBetweenSteps);  // Correct - delay between steps in milliseconds
+void stopCutMotor() {
+    if (cutMotor) {
+        cutMotor->forceStopAndNewPosition(cutMotor->getCurrentPosition());
+        Serial.println("Cut motor stopped");
+    }
+}
+
+void stopPositionMotor() {
+    if (positionMotor) {
+        positionMotor->forceStopAndNewPosition(positionMotor->getCurrentPosition());
+        Serial.println("Position motor stopped");
     }
 }
 
 //* ************************************************************************
-//* ************************ PNEUMATIC CYLINDER FUNCTIONS ***************
+//* ************************ SPECIALIZED MOTOR FUNCTIONS *****************
 //* ************************************************************************
+//! Functions with unique logic that cannot be replaced by moveMotorTo()
 
-// Unified Clamp Control Functions
-void extendClamp(ClampType clamp) {
-    switch(clamp) {
-        case POSITION_CLAMP_TYPE:
-            digitalWrite((int)POSITION_CLAMP, HIGH);
-            Serial.println("Position clamp extended");
-            break;
-        case WOOD_SECURE_CLAMP_TYPE:
-            digitalWrite((int)WOOD_SECURE_CLAMP, HIGH);
-            Serial.println("Wood secure clamp extended");
-            break;
-        case CATCHER_CLAMP_TYPE:
-            digitalWrite((int)CATCHER_CLAMP_PIN, HIGH);
-            catcherClampEngageTime = millis();
-            catcherClampIsEngaged = true;
-            Serial.println("Catcher clamp extended");
-            break;
-        default:
-            Serial.println("ERROR: Unknown clamp type for extend operation");
-            break;
+void movePositionMotorToTravelWithEarlyActivation() {
+    if (positionMotor) {
+        positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
+        positionMotor->moveTo(POSITION_MOTOR_TRAVEL_POSITION);
+        Serial.println("Position motor moving to travel position");
+        while(positionMotor->isRunning()){
+            // Wait for movement completion - no early activation during position moves
+        }
     }
 }
 
-void retractClamp(ClampType clamp) {
-    switch(clamp) {
-        case POSITION_CLAMP_TYPE:
-            digitalWrite((int)POSITION_CLAMP, LOW);
-            Serial.println("Position clamp retracted");
-            break;
-        case WOOD_SECURE_CLAMP_TYPE:
-            digitalWrite((int)WOOD_SECURE_CLAMP, LOW);
-            Serial.println("Wood secure clamp retracted");
-            break;
-        case CATCHER_CLAMP_TYPE:
-            digitalWrite((int)CATCHER_CLAMP_PIN, LOW);
-            catcherClampIsEngaged = false;
-            Serial.println("Catcher clamp retracted");
-            break;
-        default:
-            Serial.println("ERROR: Unknown clamp type for retract operation");
-            break;
+void movePositionMotorToInitialAfterHoming() {
+    if (positionMotor) {
+        positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
+        positionMotor->moveTo(0);
+        Serial.println("Position motor moving to initial position after homing");
+        while(positionMotor->isRunning()){
+            // Wait for movement completion - no early activation during position moves
+        }
     }
-}
-
-// Collective Operations
-void retractAllCylinders() {
-    retractClamp(POSITION_CLAMP_TYPE);
-    retractClamp(WOOD_SECURE_CLAMP_TYPE);
-    retractClamp(CATCHER_CLAMP_TYPE);
-    Serial.println("All cylinders retracted");
-}
-
-void extendAllCylinders() {
-    extendClamp(POSITION_CLAMP_TYPE);
-    extendClamp(WOOD_SECURE_CLAMP_TYPE);
-    extendClamp(CATCHER_CLAMP_TYPE);
-    Serial.println("All cylinders extended");
 } 

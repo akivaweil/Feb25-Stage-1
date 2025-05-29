@@ -6,6 +6,9 @@
 //! Main state machine implementation
 //! Handles state transitions and execution of state functions
 
+// External variable declarations
+extern bool isHomed;
+
 // Global State Variables
 SystemState currentState = IDLE;
 SystemState previousState = IDLE;
@@ -15,13 +18,13 @@ void initializeStateMachine() {
     //* ************************************************************************
     //* ************************ STATE MACHINE INITIALIZATION ***************************
     //* ************************************************************************
-    //! Initialize the state machine to IDLE state
+    //! Initialize the state machine to STARTUP state
     
-    currentState = IDLE;
-    previousState = IDLE;
-    stateChanged = true;
+    currentState = STARTUP;
+    previousState = STARTUP;
+    stateChanged = false; // Start with false since we're not changing states
     
-    Serial.println("State machine initialized to IDLE");
+    Serial.println("State machine initialized to STARTUP");
 }
 
 void updateStateMachine() {
@@ -39,6 +42,7 @@ void updateStateMachine() {
     switch (currentState) {
         case STARTUP:
             // STARTUP state will initialize and transition to HOMING
+            Serial.println("STARTUP: Transitioning to HOMING");
             changeState(HOMING);
             break;
         case IDLE:
@@ -51,23 +55,35 @@ void updateStateMachine() {
             executeCUTTING();
             break;
         case YESWOOD:
-            // executeYESWOOD();  // Commented out due to compilation issues
-            Serial.println("In YESWOOD state");
+            executeYESWOOD();
             break;
         case NOWOOD:
-            // executeNOWOOD();  // Commented out due to compilation issues
-            Serial.println("In NOWOOD state");
+            executeNOWOOD();
             break;
         case pushWoodForwardOne:
-            // executepushWoodForwardOne();  // Commented out due to compilation issues
-            Serial.println("In pushWoodForwardOne state");
+            executePUSHWOODFORWARDONE();
             break;
         case RELOAD:
             executeRELOAD();
             break;
         case ERROR:
-            // Handle error state - blink red LED
-            Serial.println("In ERROR state");
+            // Handle error state - blink red LED and monitor for recovery
+            static unsigned long lastErrorMessage = 0;
+            if (millis() - lastErrorMessage > 5000) {  // Print every 5 seconds
+                Serial.println("In ERROR state - Press RELOAD switch to reset");
+                lastErrorMessage = millis();
+            }
+            
+            // Check for error recovery via reload switch
+            extern Bounce reloadSwitch;
+            reloadSwitch.update();
+            if (reloadSwitch.read() == HIGH) {
+                Serial.println("RELOAD switch pressed - clearing error and returning to IDLE");
+                // Reset error flags
+                extern bool woodSuctionError;
+                woodSuctionError = false;
+                changeState(ERROR_RESET);
+            }
             break;
         case ERROR_RESET:
             // Reset from error state
@@ -111,10 +127,8 @@ bool checkTransitionConditions() {
             return true;
             
         case IDLE:
-            if (areAllSystemsReady()) {
-                changeState(HOMING);
-                return true;
-            }
+            // IDLE should stay in IDLE unless a button is pressed
+            // Remove automatic transition to HOMING that was causing infinite loop
             break;
             
         case HOMING:
@@ -174,8 +188,8 @@ bool isHomingComplete() {
     //* ************************************************************************
     //! Check if homing sequence is complete
     
-    // Use the new homing functions to check completion
-    return isHomingSequenceComplete();
+    // Use the simplified homing flag
+    return isHomed;
 }
 
 void printStateChange() {
@@ -238,15 +252,11 @@ void updateStatusLED() {
             break;
             
         case YESWOOD:
-            // Fast blink yellow
-            if (currentTime - lastLEDUpdate > 200) {
-                ledState = !ledState;
-                digitalWrite(RED_LED, LOW);
-                digitalWrite(YELLOW_LED, ledState);
-                digitalWrite(GREEN_LED, LOW);
-                digitalWrite(BLUE_LED, LOW);
-                lastLEDUpdate = currentTime;
-            }
+            // Solid yellow
+            digitalWrite(RED_LED, LOW);
+            digitalWrite(YELLOW_LED, HIGH);
+            digitalWrite(GREEN_LED, LOW);
+            digitalWrite(BLUE_LED, LOW);
             break;
             
         case NOWOOD:

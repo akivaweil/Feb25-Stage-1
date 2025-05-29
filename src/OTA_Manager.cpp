@@ -37,14 +37,22 @@ const char* WIFI_PASSWORD = "Everwood-Staff";
 void initWiFi() {
   Serial.println("\n=== ESP32 OTA Remote Upload Setup ===");
   
-  //! Step 1: Connect to WiFi
+  //! Step 1: Connect to WiFi with timeout
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   
   Serial.print("Connecting to WiFi");
+  unsigned long startTime = millis();
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+    yield(); // Prevent watchdog reset
+    
+    // Timeout after 30 seconds
+    if (millis() - startTime > 30000) {
+      Serial.println("\nWiFi connection timeout! Continuing without WiFi...");
+      return;
+    }
   }
   
   Serial.println("");
@@ -60,6 +68,12 @@ void initWiFi() {
 void initOTA() {
   // Initialize WiFi first
   initWiFi();
+  
+  // Only proceed with OTA setup if WiFi is connected
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected - skipping OTA setup");
+    return;
+  }
   
   //! Step 2: Configure OTA
   ArduinoOTA.setHostname("ESP32-Remote");
@@ -110,8 +124,10 @@ void initOTA() {
 //* ************************************************************************
 
 void handleOTA() {
-  //! Handle OTA updates
-  ArduinoOTA.handle();
+  //! Handle OTA updates only if WiFi is connected
+  if (WiFi.status() == WL_CONNECTED) {
+    ArduinoOTA.handle();
+  }
 }
 
 void displayIP() {

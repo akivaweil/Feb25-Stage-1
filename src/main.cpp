@@ -41,6 +41,8 @@ Bounce positionHomingSwitch = Bounce();
 Bounce reloadSwitch = Bounce();
 Bounce startCycleSwitch = Bounce();
 Bounce fixPositionButton = Bounce();
+Bounce woodSensor = Bounce();
+Bounce wasWoodSuctionedSensor = Bounce();
 
 // System flags
 bool isHomed = false;
@@ -75,11 +77,14 @@ bool cutMotorInYesWoodReturn = false;
 void setup() {
   Serial.begin(115200);
   Serial.println("Automated Table Saw Control System - Stage 1");
+  Serial.println("DIAGNOSTIC VERSION - Adding OTA/WiFi");
 
-    //! Initialize OTA functionality
+  //! Initialize OTA functionality
+  Serial.println("Initializing OTA...");
   initOTA();
+  Serial.println("OTA initialization complete");
   
-  //! Configure pin modes
+  //! Configure basic pin modes
   pinMode(CUT_MOTOR_PULSE_PIN, OUTPUT);
   pinMode(CUT_MOTOR_DIR_PIN, OUTPUT);
   pinMode(POSITION_MOTOR_PULSE_PIN, OUTPUT);
@@ -106,10 +111,44 @@ void setup() {
   pinMode(TA_SIGNAL_OUT_PIN, OUTPUT);
   digitalWrite(TA_SIGNAL_OUT_PIN, LOW);
   
-  //! Initialize state machine
-  initializeStateMachine();
+  // Initialize LEDs directly
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(YELLOW_LED, LOW);
+  digitalWrite(GREEN_LED, LOW);
+  digitalWrite(BLUE_LED, HIGH);  // Turn on blue LED
+  
+  Serial.println("Pin configs complete, initializing motors...");
+  
+  //! Initialize motors
+  engine.init();
+  Serial.println("Engine initialized");
+
+  cutMotor = engine.stepperConnectToPin(CUT_MOTOR_PULSE_PIN);
+  if (cutMotor) {
+    cutMotor->setDirectionPin(CUT_MOTOR_DIR_PIN);
+    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_NORMAL_SPEED);
+    cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION);
+    cutMotor->setCurrentPosition(0);
+    Serial.println("Cut motor initialized successfully");
+  } else {
+    Serial.println("Failed to init cutMotor");
+  }
+
+  positionMotor = engine.stepperConnectToPin(POSITION_MOTOR_PULSE_PIN);
+  if (positionMotor) {
+    positionMotor->setDirectionPin(POSITION_MOTOR_DIR_PIN);
+    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
+    positionMotor->setAcceleration((uint32_t)POSITION_MOTOR_NORMAL_ACCELERATION);
+    positionMotor->setCurrentPosition(0);
+    Serial.println("Position motor initialized successfully");
+  } else {
+    Serial.println("Failed to init positionMotor");
+  }
+  
+  Serial.println("Motor setup complete - OTA + Motors working");
   
   //! Configure switch debouncing
+  Serial.println("Configuring switch debouncing...");
   cutHomingSwitch.attach(CUT_MOTOR_HOMING_SWITCH);
   cutHomingSwitch.interval(3);
   
@@ -125,67 +164,56 @@ void setup() {
   fixPositionButton.attach(FIX_POSITION_BUTTON);
   fixPositionButton.interval(20);
   
-  //! Initialize motors
-  engine.init();
-
-  cutMotor = engine.stepperConnectToPin(CUT_MOTOR_PULSE_PIN);
-  if (cutMotor) {
-    cutMotor->setDirectionPin(CUT_MOTOR_DIR_PIN);
-    cutMotor->setSpeedInHz((uint32_t)CUT_MOTOR_NORMAL_SPEED);
-    cutMotor->setAcceleration((uint32_t)CUT_MOTOR_NORMAL_ACCELERATION);
-    cutMotor->setCurrentPosition(0);
-    cutMotor->setPulseWidthInMicros(CUT_MOTOR_MIN_PULSE_WIDTH);
-  } else {
-    Serial.println("Failed to init cutMotor");
-  }
-
-  positionMotor = engine.stepperConnectToPin(POSITION_MOTOR_PULSE_PIN);
-  if (positionMotor) {
-    positionMotor->setDirectionPin(POSITION_MOTOR_DIR_PIN);
-    positionMotor->setSpeedInHz((uint32_t)POSITION_MOTOR_NORMAL_SPEED);
-    positionMotor->setAcceleration((uint32_t)POSITION_MOTOR_NORMAL_ACCELERATION);
-    positionMotor->setCurrentPosition(0);
-    positionMotor->setPulseWidthInMicros(POSITION_MOTOR_MIN_PULSE_WIDTH);
-  } else {
-    Serial.println("Failed to init positionMotor");
-  }
+  woodSensor.attach(WOOD_SENSOR);
+  woodSensor.interval(5);
+  
+  wasWoodSuctionedSensor.attach(WAS_WOOD_SUCTIONED_SENSOR);
+  wasWoodSuctionedSensor.interval(5);
   
   //! Initialize servo
+  Serial.println("Initializing servo...");
   catcherServo.setTimerWidth(14);
   catcherServo.attach(CATCHER_SERVO_PIN);
   
+  Serial.println("Switches and servo configured");
+  
+  //! Initialize state machine
+  Serial.println("Initializing state machine...");
+  initializeStateMachine();
+  
   //! Configure initial state
   currentState = STARTUP;
-  previousState = ERROR_RESET; // Initialize to a different state to ensure first print
+  previousState = STARTUP;
   
+  // Check initial switch states for safety
   startCycleSwitch.update();
   if (startCycleSwitch.read() == HIGH) {
     startSwitchSafe = false;
+    Serial.println("WARNING: Start cycle switch is ON at startup - Turn OFF first to enable safety");
   } else {
-    startSwitchSafe = true;
+    startSwitchSafe = false;  // Force false even if switch is off - requires a cycle OFF->ON
+    Serial.println("Start cycle switch is OFF at startup - Switch must be cycled OFF->ON to enable safety");
   }
   
-  //! Initialize clamps and LEDs
-  // extendPositionClamp();       // Commented out - function missing
-  // extendWoodSecureClamp();     // Commented out - function missing  
-  // retractCatcherClamp();       // Commented out - function missing
-  // allLedsOff();                // Commented out - function missing
-  // turnBlueLedOn();             // Commented out - function missing
-  
-  // Initialize LEDs directly
-  digitalWrite(RED_LED, LOW);
-  digitalWrite(YELLOW_LED, LOW);
-  digitalWrite(GREEN_LED, LOW);
-  digitalWrite(BLUE_LED, HIGH);  // Turn on blue LED
-  
-  Serial.println("Setup complete - early activation functionality ready");
-  
-  delay(10);
+  Serial.println("State machine initialized");
+  Serial.println("Setup complete - full system ready");
 }
 
 void loop() {
+  // Re-enable state machine to test if it causes watchdog reset issue
+  Serial.println("Loop starting - testing state machine...");
+  
   // Execute the state machine
   updateStateMachine();
-      //! Handle OTA updates
+  
+  //! Handle OTA updates
   handleOTA();
+  
+  // Prevent watchdog reset
+  yield();
+  
+  // Add delay to slow down debug output
+  delay(500);
+  
+  Serial.println("Loop completed successfully");
 } 

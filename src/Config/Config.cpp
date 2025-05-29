@@ -13,9 +13,6 @@
 const int CATCHER_SERVO_HOME_POSITION = 24;     // Home position (degrees)
 const int CATCHER_SERVO_ACTIVE_POSITION = 90;   // Position when activated (degrees)
 
-// Catcher servo early activation offset
-const float CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES = 1.2; // Early activation offset for servo rotation
-
 //* ************************************************************************
 //* ************************ MOTOR CONFIGURATION **************************
 //* ************************************************************************
@@ -94,3 +91,6 @@ const unsigned long TA_SIGNAL_DURATION = 150; // Duration for Transfer Arm signa
 //* ************************************************************************
 // Catcher clamp early activation offset
 const float CATCHER_CLAMP_EARLY_ACTIVATION_OFFSET_INCHES = 1.2; 
+
+// Catcher servo early activation offset
+const float CATCHER_SERVO_EARLY_ACTIVATION_OFFSET_INCHES = 0.85; // Early activation offset for servo rotation

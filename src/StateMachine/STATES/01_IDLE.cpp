@@ -6,80 +6,53 @@
 //* ************************************************************************
 //* ************************ IDLE STATE ***********************************
 //* ************************************************************************
-//! IDLE state implementation
-//! System waits in ready state, monitors switches, and handles OTA updates
-//! This is the main waiting state where the system is ready for operation
+//! IDLE state implementation - Machine waiting and monitoring for input
+//! 
+//! Step-by-step sequence:
+//! 1. Check for OTA uploads
+//! 2. Handle start switch safety to prevent accidental startup
+//! 3. Check start cycle switch - if HIGH and switch is safe, switch to CUTTING state
+//! 4. Check reload switch - if HIGH, switch to RELOAD state
 
 // External variable declarations
 extern SystemState currentState;
 extern bool stateChanged;
 extern Bounce startCycleSwitch;
 extern Bounce reloadSwitch;
+extern bool startSwitchSafe;
 
 void executeIDLE() {
-    static bool entryExecuted = false;
-    static unsigned long lastStatusMessage = 0;
-    
     //! ************************************************************************
-    //! STEP 1: EXECUTE ENTRY ACTIONS (ONLY ONCE WHEN ENTERING STATE)
-    //! ************************************************************************
-    if (stateChanged && !entryExecuted) {
-        Serial.println("=== ENTERING IDLE STATE ===");
-        Serial.println("System ready for operations");
-        Serial.println("Monitoring: Start Cycle Switch | Reload Switch | OTA Updates");
-        
-        // Turn on green LED to indicate ready state
-        turnGreenLedOn();
-        
-        // Set entry flags
-        entryExecuted = true;
-        stateChanged = false;
-        
-        Serial.println("IDLE state entry complete - system ready and monitoring");
-    }
-    
-    //! ************************************************************************
-    //! STEP 2: RESET ENTRY FLAG WHEN LEAVING STATE
-    //! ************************************************************************
-    if (currentState != IDLE) {
-        entryExecuted = false;
-        return;
-    }
-    
-    //! ************************************************************************
-    //! STEP 3: UPDATE SWITCH STATES
-    //! ************************************************************************
-    startCycleSwitch.update();
-    reloadSwitch.update();
-    
-    //! ************************************************************************
-    //! STEP 4: CHECK FOR OTA UPDATES
+    //! STEP 1: CHECK FOR OTA UPLOADS
     //! ************************************************************************
     handleOTA();
     
     //! ************************************************************************
-    //! STEP 5: MONITOR START CYCLE SWITCH
+    //! STEP 2: HANDLE START SWITCH SAFETY
     //! ************************************************************************
-    if (startCycleSwitch.rose() == HIGH) {
-        Serial.println("Start cycle switch detected HIGH - transitioning to CUTTING state");
-        changeState(CUTTING);
-        return;
+    handleStartSwitchSafety();
+    
+    //! ************************************************************************
+    //! STEP 3: CHECK START CYCLE SWITCH (WITH SAFETY CHECK)
+    //! ************************************************************************
+    startCycleSwitch.update();
+    if (startCycleSwitch.read() == HIGH) {
+        if (startSwitchSafe) {
+            Serial.println("Start cycle switch HIGH and safe - transitioning to CUTTING state");
+            changeState(CUTTING);
+            return;
+        } else {
+            Serial.println("Start cycle switch HIGH but NOT SAFE - Turn switch OFF first to enable safety");
+        }
     }
     
     //! ************************************************************************
-    //! STEP 6: MONITOR RELOAD SWITCH
+    //! STEP 4: CHECK RELOAD SWITCH
     //! ************************************************************************
+    reloadSwitch.update();
     if (reloadSwitch.read() == HIGH) {
-        Serial.println("Reload switch detected HIGH - transitioning to RELOAD state");
+        Serial.println("Reload switch HIGH - transitioning to RELOAD state");
         changeState(RELOAD);
         return;
-    }
-    
-    //! ************************************************************************
-    //! STEP 7: PERIODIC STATUS MESSAGES
-    //! ************************************************************************
-    if (millis() - lastStatusMessage > 10000) {  // Print every 10 seconds
-        Serial.println("IDLE state active - System ready | Monitoring switches and OTA");
-        lastStatusMessage = millis();
     }
 } 

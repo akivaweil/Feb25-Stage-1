@@ -17,7 +17,6 @@ extern bool isReloadMode;
 
 void executeRELOAD() {
     static bool entryExecuted = false;
-    static unsigned long lastStatusMessage = 0;
     
     //! ************************************************************************
     //! STEP 1: EXECUTE ENTRY ACTIONS (ONLY ONCE WHEN ENTERING STATE)
@@ -30,13 +29,9 @@ void executeRELOAD() {
         // Set reload mode flag
         isReloadMode = true;
         
-        // Turn on yellow LED to indicate reload mode
-        turnYellowLedOn();
-        
-        // Retract all clamps for safe manual access
+        // Retract clamps for safe manual access (excluding catcher clamp - not needed for reload)
         retractClamp(POSITION_CLAMP_TYPE);
         retractClamp(WOOD_SECURE_CLAMP_TYPE);
-        retractClamp(CATCHER_CLAMP_TYPE);
         
         // Set entry flags
         entryExecuted = true;
@@ -77,22 +72,5 @@ void executeRELOAD() {
         Serial.println("Exiting reload mode - returning to IDLE state");
         changeState(IDLE);
         return;
-    }
-    
-    //! ************************************************************************
-    //! STEP 5: MAINTAIN SAFE RELOAD CONDITIONS
-    //! ************************************************************************
-    // Continuously ensure clamps remain retracted during reload
-    retractClamp(POSITION_CLAMP_TYPE);
-    retractClamp(WOOD_SECURE_CLAMP_TYPE);
-    retractClamp(CATCHER_CLAMP_TYPE);
-    
-    //! ************************************************************************
-    //! STEP 6: PERIODIC STATUS MESSAGES
-    //! ************************************************************************
-    if (millis() - lastStatusMessage > 5000) {  // Print every 5 seconds
-        Serial.println("RELOAD mode active - System safe for manual operation");
-        Serial.println("Turn OFF reload switch to exit reload mode");
-        lastStatusMessage = millis();
     }
 } 

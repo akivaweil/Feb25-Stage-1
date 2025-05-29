@@ -1,6 +1,5 @@
 #include "StateMachine/StateMachine.h"
 #include "StateMachine/SensorFunctions.h"
-#include "StateMachine/MotorFunctions.h"
 #include <Arduino.h>
 
 //* ************************************************************************
