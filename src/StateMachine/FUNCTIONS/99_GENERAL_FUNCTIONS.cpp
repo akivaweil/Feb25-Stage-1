@@ -279,7 +279,7 @@ void homePositionMotorBlocking(Bounce& homingSwitch) {
         homingSwitch.update();
     }
     positionMotor->stopMove();
-    positionMotor->setCurrentPosition((+2.0 * POSITION_MOTOR_STEPS_PER_INCH)+(POSITION_TRAVEL_DISTANCE * POSITION_MOTOR_STEPS_PER_INCH));
+    positionMotor->setCurrentPosition(POSITION_TRAVEL_DISTANCE * POSITION_MOTOR_STEPS_PER_INCH);
     Serial.println("Position motor homed.");
     configurePositionMotorForNormalOperation();
 }
@@ -287,7 +287,7 @@ void homePositionMotorBlocking(Bounce& homingSwitch) {
 void movePositionMotorToInitialAfterHoming() {
     if (positionMotor) {
         configurePositionMotorForNormalOperation();
-        movePositionMotorToTravel();
+        movePositionMotorToHome();
         while(positionMotor->isRunning()){
             checkCatcherServoEarlyActivation();
             checkCatcherClampEarlyActivation();
